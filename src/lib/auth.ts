@@ -1,0 +1,342 @@
+import NextAuth from 'next-auth';
+import { PrismaAdapter } from '@auth/prisma-adapter';
+import CredentialsProvider from 'next-auth/providers/credentials';
+import bcrypt from 'bcryptjs';
+import { prisma } from './prisma';
+import { AuthError, NotFoundError } from './utils/errors';
+import type { User } from '@prisma/client';
+
+// Extend the types for NextAuth
+declare module 'next-auth' {
+  interface Session {
+    user: {
+      id: string;
+      email: string;
+      name: string;
+      role: string;
+      status: string;
+      emailVerified: boolean;
+      phoneVerified: boolean;
+      avatarUrl?: string | null;
+    };
+  }
+
+  interface User {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    status: string;
+    emailVerified: boolean;
+    phoneVerified: boolean;
+    avatarUrl?: string | null;
+  }
+}
+
+declare module '@auth/core/jwt' {
+  interface JWT {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    status: string;
+    emailVerified: boolean;
+    phoneVerified: boolean;
+    avatarUrl?: string | null;
+  }
+}
+
+// Custom user type for our application
+export interface SessionUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  status: string;
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  avatarUrl?: string | null;
+}
+
+export interface AuthSession {
+  user: SessionUser;
+}
+
+// Validate user for authentication
+export async function validateUser(email: string, password: string): Promise<User> {
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+    include: {
+      securitySettings: true,
+      profile: true,
+    },
+  });
+
+  if (!user) {
+    throw new NotFoundError('User', `with email: ${email}`);
+  }
+
+  // Check if account is suspended or closed
+  if (user.status !== 'ACTIVE') {
+    throw new AuthError(`Account is ${user.status.toLowerCase()}`);
+  }
+
+  // Verify password
+  const isValidPassword = await bcrypt.compare(password, user.password);
+  if (!isValidPassword) {
+    // Update failed attempts
+    await prisma.securitySettings.upsert({
+      where: { userId: user.id },
+      update: {
+        failedAttempts: { increment: 1 },
+        lockedUntil: user.securitySettings?.failedAttempts && user.securitySettings.failedAttempts >= 4
+          ? new Date(Date.now() + 15 * 60 * 1000) // 15 minutes lockout
+          : undefined,
+      },
+      create: {
+        userId: user.id,
+        failedAttempts: 1,
+        lockedUntil: new Date(Date.now() + 15 * 60 * 1000),
+      },
+    });
+
+    throw new AuthError('Invalid credentials');
+  }
+
+  // Reset failed attempts on successful login
+  if (user.securitySettings?.failedAttempts && user.securitySettings.failedAttempts > 0) {
+    await prisma.securitySettings.update({
+      where: { userId: user.id },
+      data: { failedAttempts: 0, lockedUntil: null },
+    });
+  }
+
+  // Check if account is locked
+  if (user.securitySettings?.lockedUntil && user.securitySettings.lockedUntil > new Date()) {
+    throw new AuthError('Account is temporarily locked due to too many failed attempts');
+  }
+
+  return user;
+}
+
+// NextAuth configuration
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  adapter: PrismaAdapter(prisma),
+  session: {
+    strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+  },
+  pages: {
+    signIn: '/login',
+    error: '/login',
+  },
+  providers: [
+    CredentialsProvider({
+      name: 'credentials',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          throw new AuthError('Email and password are required');
+        }
+
+        try {
+          const user = await validateUser(
+            credentials.email as string,
+            credentials.password as string
+          );
+
+          // Create audit log for login
+          await prisma.auditLog.create({
+            data: {
+              actorId: user.id,
+              action: 'LOGIN',
+              resourceType: 'USER',
+              resourceId: user.id,
+              metadata: {
+                ipAddress: credentials.ipAddress,
+                userAgent: credentials.userAgent,
+              },
+              status: 'SUCCESS',
+            },
+          });
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: `${user.firstName} ${user.lastName}`,
+            role: user.role,
+            status: user.status,
+            emailVerified: user.emailVerified,
+            phoneVerified: user.phoneVerified,
+            avatarUrl: user.profile?.avatarUrl || null,
+          };
+        } catch (error) {
+          // Log failed login attempt
+          if (credentials.email) {
+            const user = await prisma.user.findUnique({
+              where: { email: (credentials.email as string).toLowerCase() },
+            });
+            if (user) {
+              await prisma.auditLog.create({
+                data: {
+                  actorId: user.id,
+                  action: 'LOGIN',
+                  resourceType: 'USER',
+                  resourceId: user.id,
+                  metadata: {
+                    ipAddress: credentials.ipAddress,
+                    userAgent: credentials.userAgent,
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                  },
+                  status: 'FAILURE',
+                  errorMessage: error instanceof Error ? error.message : 'Unknown error',
+                },
+              });
+            }
+          }
+          return null;
+        }
+      },
+    }),
+  ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.role = user.role;
+        token.status = user.status;
+        token.emailVerified = user.emailVerified;
+        token.phoneVerified = user.phoneVerified;
+        token.avatarUrl = user.avatarUrl;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      session.user = {
+        id: token.id,
+        email: token.email!,
+        name: token.name!,
+        role: token.role!,
+        status: token.status!,
+        emailVerified: token.emailVerified!,
+        phoneVerified: token.phoneVerified!,
+        avatarUrl: token.avatarUrl,
+      };
+      return session;
+    },
+  },
+});
+
+// Get current user from session
+export async function getCurrentUser() {
+  const session = await auth();
+  return session?.user;
+}
+
+// Check if user is authenticated
+export async function isAuthenticated() {
+  const user = await getCurrentUser();
+  return !!user;
+}
+
+// Check if user has a specific role
+export async function hasRole(role: string | string[]) {
+  const user = await getCurrentUser();
+  if (!user) return false;
+  
+  if (Array.isArray(role)) {
+    return role.includes(user.role);
+  }
+  return user.role === role;
+}
+
+// Check if user has permission
+export async function hasPermission(permission: string) {
+  const user = await getCurrentUser();
+  if (!user) return false;
+
+  // SUPER_ADMIN has all permissions
+  if (user.role === 'SUPER_ADMIN') return true;
+
+  // Check role permissions
+  const rolePermissions = await prisma.rolePermission.findMany({
+    where: { role: user.role as any },
+    include: { permission: true },
+  });
+
+  return rolePermissions.some(rp => rp.permission.name === permission);
+}
+
+// Check if user can access a resource (ownership check)
+export async function canAccessResource(
+  resourceType: string,
+  resourceId: string,
+  resourceUserId?: string
+) {
+  const user = await getCurrentUser();
+  if (!user) return false;
+
+  // Admin and above can access any resource
+  if (['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(user.role)) {
+    return true;
+  }
+
+  // Support can access user-related resources
+  if (user.role === 'SUPPORT' && resourceType === 'USER') {
+    return true;
+  }
+
+  // For most resources, check ownership
+  if (resourceUserId) {
+    return resourceUserId === user.id;
+  }
+
+  // Fetch resource user ID from database
+  const resourceMap: Record<string, { model: any; idField: string; userField: string }> = {
+    ACCOUNT: { model: prisma.account, idField: 'id', userField: 'userId' },
+    TRANSACTION: { model: prisma.transaction, idField: 'id', userField: 'userId' },
+    TRANSFER: { model: prisma.transfer, idField: 'id', userField: 'fromUserId' },
+    DEPOSIT: { model: prisma.deposit, idField: 'id', userField: 'userId' },
+    WITHDRAWAL: { model: prisma.withdrawal, idField: 'id', userField: 'userId' },
+    CARD: { model: prisma.card, idField: 'id', userField: 'userId' },
+    BENEFICIARY: { model: prisma.beneficiary, idField: 'id', userField: 'userId' },
+    KYC_PROFILE: { model: prisma.kYCProfile, idField: 'id', userField: 'userId' },
+    LOAN_APPLICATION: { model: prisma.loanApplication, idField: 'id', userField: 'userId' },
+    SAVINGS_GOAL: { model: prisma.savingsGoal, idField: 'id', userField: 'userId' },
+    INVESTMENT_PORTFOLIO: { model: prisma.investmentPortfolio, idField: 'id', userField: 'userId' },
+    SUPPORT_TICKET: { model: prisma.supportTicket, idField: 'id', userField: 'userId' },
+  };
+
+  const config = resourceMap[resourceType];
+  if (!config) return false;
+
+  try {
+    const resource = await (config.model as any).findUnique({
+      where: { [config.idField]: resourceId },
+    });
+    return resource?.[config.userField] === user.id;
+  } catch {
+    return false;
+  }
+}
+
+// Middleware for role-based access control
+export function withRole(role: string | string[]) {
+  return async (req: Request, res: Response, next: any) => {
+    const user = await getCurrentUser();
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+    }
+    
+    if (!hasRole(role)) {
+      return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
+    }
+    
+    return next();
+  };
+}
