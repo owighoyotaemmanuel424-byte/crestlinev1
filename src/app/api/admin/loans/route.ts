@@ -1,64 +1,51 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { LoanService } from '@/lib/services/loan-service';
+import { success, paginated } from '@/lib/middleware/response';
+import { handleRouteError } from '@/lib/middleware/error-handler';
+import { getAuthUser } from '@/lib/middleware/auth';
 
+// GET /api/admin/loans - List all loans (admin only)
 export async function GET(request: Request) {
-  try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!['ADMIN', 'SUPER_ADMIN', 'SUPPORT', 'OPERATOR'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+  return handleRouteError(request, { params: {} }, async () => {
+    const user = getAuthUser(request);
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '20');
+    const status = searchParams.get('status') as any;
+    const userId = searchParams.get('userId');
+    
+    const result = await LoanService.listAllLoans(user.id, page, limit, status, userId);
+    return paginated(result.loans, result.page, result.limit, result.total);
+  });
+}
 
-    const { search, status, customerId, page, limit } = Object.fromEntries(
-      new URL(request.url).searchParams.entries()
+// POST /api/admin/loans/:id/approve - Approve loan (admin only)
+const approveLoanSchema = z.object({
+  approvedAmount: z.number().positive().optional(),
+  interestRate: z.number().positive().optional(),
+  termMonths: z.number().int().positive().optional(),
+  notes: z.string().optional(),
+});
+
+export async function POST(request: Request, { params }: { params: { id: string } }) {
+  return handleRouteError(request, { params }, async () => {
+    const user = getAuthUser(request);
+    const body = await request.json();
+    const validated = approveLoanSchema.parse(body);
+    
+    const result = await LoanService.approveLoanApplication(
+      params.id,
+      {
+        approvedAmount: validated.approvedAmount,
+        interestRate: validated.interestRate,
+        termMonths: validated.termMonths,
+        notes: validated.notes,
+        approvedBy: user.id,
+      },
+      user.id
     );
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 20;
-    const skip = (pageNum - 1) * limitNum;
-
-    const where: any = {};
-    if (search) {
-      where.OR = [
-        { reference: { contains: search, mode: 'insensitive' } },
-        { user: { firstName: { contains: search, mode: 'insensitive' } } },
-        { user: { lastName: { contains: search, mode: 'insensitive' } } },
-        { user: { email: { contains: search, mode: 'insensitive' } } },
-      ];
-    }
-    if (status && status !== 'ALL') where.status = status;
-    if (customerId) where.userId = customerId;
-
-    const [loans, total] = await Promise.all([
-      prisma.loan.findMany({
-        where,
-        skip,
-        take: limitNum,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          user: { select: { id: true, email: true, firstName: true, lastName: true, status: true } },
-          account: { select: { id: true, accountNumber: true, name: true } },
-          repayments: { orderBy: { dueDate: 'asc' }, take: 10 },
-          reviewedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-          auditLogs: { orderBy: { createdAt: 'desc' }, take: 5 },
-        },
-      }),
-      prisma.loan.count({ where }),
-    ]);
-
-    return NextResponse.json({
-      loans,
-      total,
-      page: pageNum,
-      limit: limitNum,
-      totalPages: Math.ceil(total / limitNum),
-    });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch loans' },
-      { status: 500 }
-    );
-  }
+    
+    return success(result);
+  });
 }

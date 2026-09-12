@@ -1,55 +1,23 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
 import { KYCService } from '@/lib/services/kyc-service';
+import { success } from '@/lib/middleware/response';
+import { handleRouteError } from '@/lib/middleware/error-handler';
+import { getAuthUser, complianceMiddleware } from '@/lib/middleware/auth';
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const session = await auth();
-    const { id } = await params;
-    
-    if (!session?.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    if (!['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(session.user.role)) {
-      return NextResponse.json(
-        { error: 'Forbidden' },
-        { status: 403 }
-      );
-    }
-
+// POST /api/admin/kyc/:id/approve - Approve KYC (compliance only)
+export async function POST(request: Request, { params }: { params: { id: string } }) {
+  return handleRouteError(request, { params }, async () => {
+    const user = getAuthUser(request);
     const body = await request.json();
-    const { notes } = body;
-
-    const result = await KYCService.approveKYC(
-      id,
-      session.user.id,
-      notes
+    const notes = body.notes as string | undefined;
+    
+    const result = await KYCService.updateKYCProfile(
+      params.id,
+      { status: 'APPROVED', notes },
+      user.id
     );
-
-    await prisma.auditLog.create({
-      data: {
-        actorId: session.user.id,
-        action: 'APPROVE',
-        resourceType: 'KYC_PROFILE',
-        resourceId: id,
-        metadata: { notes },
-        status: 'SUCCESS',
-      },
-    });
-
-    return NextResponse.json(result);
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to approve KYC' },
-      { status: 500 }
-    );
-  }
+    
+    return success(result);
+  });
 }

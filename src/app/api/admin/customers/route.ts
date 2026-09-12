@@ -1,68 +1,60 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { AuthService } from '@/lib/services/auth-service';
+import { success, paginated } from '@/lib/middleware/response';
+import { handleRouteError } from '@/lib/middleware/error-handler';
+import { getAuthUser } from '@/lib/middleware/auth';
 
+// GET /api/admin/customers - List all customers (admin only)
 export async function GET(request: Request) {
-  try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!['ADMIN', 'SUPER_ADMIN', 'SUPPORT', 'COMPLIANCE'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const { search, status, kycStatus, page, limit } = Object.fromEntries(
-      new URL(request.url).searchParams.entries()
-    );
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 20;
-    const skip = (pageNum - 1) * limitNum;
-
-    const where: any = {};
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ];
-    }
-    if (status && status !== 'ALL') where.status = status;
-    if (kycStatus && kycStatus !== 'ALL') where.kYCProfile = { status: kycStatus };
-
-    const [customers, total] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        skip,
-        take: limitNum,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          kYCProfile: { select: { id: true, status: true, riskScore: true } },
-          accounts: { select: { id: true, accountNumber: true, balance: true, status: true } },
-          _count: {
-            select: {
-              accounts: true,
-              transactions: true,
-              transfersFrom: true,
-              transfersTo: true,
-            },
-          },
-        },
-      }),
-      prisma.user.count({ where }),
-    ]);
-
-    return NextResponse.json({
-      customers,
-      total,
-      page: pageNum,
-      limit: limitNum,
-      totalPages: Math.ceil(total / limitNum),
+  return handleRouteError(request, { params: {} }, async () => {
+    const user = getAuthUser(request);
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '20');
+    const role = searchParams.get('role') as any;
+    const status = searchParams.get('status') as any;
+    const search = searchParams.get('search');
+    
+    const result = await AuthService.listUsers(user.id, {
+      page,
+      limit,
+      role,
+      status,
+      search,
     });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch customers' },
-      { status: 500 }
-    );
-  }
+    
+    return paginated(result.users, result.page, result.limit, result.total);
+  });
+}
+
+// POST /api/admin/customers - Create customer (admin only)
+const createCustomerSchema = z.object({
+  email: z.string().email(),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  phone: z.string().optional(),
+  password: z.string().min(8),
+  role: z.enum(['USER', 'ADMIN', 'SUPER_ADMIN', 'COMPLIANCE', 'OPERATOR']).optional().default('USER'),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+export async function POST(request: Request) {
+  return handleRouteError(request, { params: {} }, async () => {
+    const user = getAuthUser(request);
+    const body = await request.json();
+    const validated = createCustomerSchema.parse(body);
+    
+    const result = await AuthService.register({
+      email: validated.email,
+      password: validated.password,
+      firstName: validated.firstName,
+      lastName: validated.lastName,
+      phone: validated.phone,
+      role: validated.role,
+      metadata: validated.metadata,
+    }, user.id);
+    
+    return success(result);
+  });
 }
