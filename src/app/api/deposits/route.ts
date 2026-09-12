@@ -1,14 +1,13 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { AccountService } from '@/lib/services/account-service';
+import { DepositService } from '@/lib/services/deposit-service';
 import { success, paginated } from '@/lib/middleware/response';
 import { handleRouteError } from '@/lib/middleware/error-handler';
 import { getAuthUser } from '@/lib/middleware/auth';
-import { schemas } from '@/lib/middleware/validation';
 
 // ============================================
-// GET /api/accounts
-// List user accounts with pagination
+// GET /api/deposits
+// List user deposits with pagination
 // ============================================
 
 export async function GET(request: Request) {
@@ -20,38 +19,44 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const status = searchParams.get('status') as any;
     
-    const result = await AccountService.listAccounts(user.id, { page, limit, status });
+    const result = await DepositService.listDeposits(user.id, { page, limit, status });
     
-    return paginated(result.accounts, result.page, result.limit, result.total);
+    return paginated(result.deposits, result.page, result.limit, result.total);
   });
 }
 
 // ============================================
-// POST /api/accounts
-// Create a new account
+// POST /api/deposits
+// Create a new deposit
 // ============================================
 
-const createAccountSchema = z.object({
-  accountNumber: z.string().optional(),
-  name: z.string().min(1),
+const createDepositSchema = z.object({
+  accountId: z.string().uuid(),
+  amount: z.number().positive(),
   currency: z.string().length(3),
-  accountType: z.enum(['SAVINGS', 'CURRENT', 'LOAN', 'INVESTMENT', 'ESCROW']),
-  initialBalance: z.number().nonnegative().optional().default(0),
+  paymentMethod: z.string(),
+  paymentReference: z.string(),
+  description: z.string().optional(),
+  idempotencyKey: z.string().optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 
 export async function POST(request: Request) {
   return handleRouteError(request, { params: {} }, async () => {
     const user = getAuthUser(request);
     const body = await request.json();
-    const validated = createAccountSchema.parse(body);
+    const validated = createDepositSchema.parse(body);
     
-    const result = await AccountService.createAccount({
+    const result = await DepositService.createDeposit({
       userId: user.id,
-      accountNumber: validated.accountNumber,
-      name: validated.name,
+      accountId: validated.accountId,
+      amount: validated.amount,
       currency: validated.currency,
-      accountType: validated.accountType,
-      initialBalance: validated.initialBalance,
+      paymentMethod: validated.paymentMethod,
+      paymentReference: validated.paymentReference,
+      description: validated.description,
+      idempotencyKey: validated.idempotencyKey,
+      metadata: validated.metadata,
     }, user.id);
     
     return success(result);
