@@ -1,7 +1,7 @@
-/** @type {import("next").NextConfig} */
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ["bcryptjs"],
+    serverComponentsExternalPackages: ['bcryptjs'],
   },
   webpack: (config) => {
     config.resolve.alias.canvas = false;
