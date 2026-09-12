@@ -1,0 +1,151 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-rgb: 11, 15, 25;
+  --background-rgb-secondary: 18, 24, 40;
+  --background-rgb-tertiary: 26, 33, 54;
+  --primary-rgb: 56, 189, 248;
+  --primary-rgb-dark: 23, 146, 255;
+  --success-rgb: 34, 197, 94;
+  --warning-rgb: 251, 146, 60;
+  --error-rgb: 239, 68, 68;
+  --info-rgb: 59, 130, 246;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-rgb));
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--background-rgb-secondary));
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--background-rgb-tertiary));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--primary-rgb));
+}
+
+/* Focus styles for accessibility */
+:focus-visible {
+  outline: 2px solid rgb(var(--primary-rgb));
+  outline-offset: 2px;
+}
+
+.crestline-gradient {
+  background: linear-gradient(135deg, rgb(var(--primary-rgb)) 0%, rgb(var(--primary-rgb-dark)) 100%);
+}
+
+.crestline-card {
+  background: rgb(var(--background-rgb-secondary));
+  border: 1px solid rgba(56, 189, 248, 0.1);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.crestline-card:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.1), 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+.crestline-btn {
+  background: rgb(var(--primary-rgb));
+  color: white;
+  border: none;
+  border-radius: 0.375rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.crestline-btn:hover {
+  background: rgb(var(--primary-rgb-dark));
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+}
+
+.crestline-input {
+  background: rgb(var(--background-rgb-secondary));
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 0.375rem;
+  padding: 0.75rem 1rem;
+  color: rgb(var(--foreground-rgb));
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+.crestline-input:focus {
+  outline: none;
+  border-color: rgb(var(--primary-rgb));
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+}
+
+.crestline-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.crestline-badge-success {
+  background: rgba(34, 197, 94, 0.2);
+  color: rgb(var(--success-rgb));
+}
+
+.crestline-badge-warning {
+  background: rgba(251, 146, 60, 0.2);
+  color: rgb(var(--warning-rgb));
+}
+
+.crestline-badge-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: rgb(var(--error-rgb));
+}
+
+.crestline-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.crestline-table th,
+.crestline-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.1);
+}
+
+.crestline-table th {
+  background: rgb(var(--background-rgb-tertiary));
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.crestline-table tr:hover {
+  background: rgba(56, 189, 248, 0.05);
+}
+
+@media (max-width: 768px) {
+  .crestline-table-responsive {
+    display: block;
+    overflow-x: auto;
+  }
+}
