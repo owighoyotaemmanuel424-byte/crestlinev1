@@ -34,6 +34,7 @@ export async function POST(
       reason
     );
 
+    // Create audit log
     await prisma.auditLog.create({
       data: {
         actorId: session.user.id,
