@@ -1,0 +1,1433 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String
+  firstName     String
+  lastName      String
+  phone         String?
+  dateOfBirth   DateTime?
+  address       String?
+  city          String?
+  state         String?
+  zipCode       String?
+  country       String    @default("US")
+  status        UserStatus @default(ACTIVE)
+  role          Role       @default(CUSTOMER)
+  emailVerified Boolean   @default(false)
+  phoneVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  accounts           Account[]
+  transactions        Transaction[]        @relation("UserTransactions")
+  transfersFrom       Transfer[]           @relation("FromUser")
+  transfersTo         Transfer[]           @relation("ToUser")
+  deposits            Deposit[]
+  withdrawals         Withdrawal[]
+  cards               Card[]
+  beneficiaries       Beneficiary[]
+  kycProfile          KYCProfile?
+  kycDocuments        KYCDocument[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]           @relation("UserAuditLogs")
+  sessions            Session[]
+  loanApplications    LoanApplication[]
+  savingsGoals        SavingsGoal[]
+  investmentPortfolios InvestmentPortfolio[]
+  supportTickets      SupportTicket[]
+  securitySettings    SecuritySettings?
+  profile             Profile?
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+  CLOSED
+}
+
+enum Role {
+  CUSTOMER
+  SUPPORT
+  OPERATOR
+  COMPLIANCE
+  ADMIN
+  SUPER_ADMIN
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  ipAddress    String?
+  userAgent    String?
+
+  @@index([userId])
+  @@index([sessionToken])
+  @@index([expires])
+}
+
+// ============================================
+// ACCOUNTS & LEDGER
+// ============================================
+
+model Account {
+  id              String     @id @default(cuid())
+  accountNumber   String     @unique
+  userId          String
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountType     AccountType
+  name            String
+  currency        String     @default("USD")
+  status          AccountStatus @default(ACTIVE)
+  balance         Decimal    @default(0) @db.Decimal(20, 2)
+  availableBalance Decimal    @default(0) @db.Decimal(20, 2)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Relations
+  transactions          Transaction[]
+  transfersFrom         Transfer[]    @relation("AccountTransfersFrom")
+  transfersTo           Transfer[]    @relation("AccountTransfersTo")
+  deposits              Deposit[]
+  withdrawals           Withdrawal[]
+  cards                 Card[]
+  ledgerEntries         LedgerEntry[]
+  loanDisbursements      LoanDisbursement[]
+  loanRepayments         LoanRepayment[]
+  savingsContributions   SavingsContribution[]
+  investmentTransactions InvestmentTransaction[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([accountNumber])
+  @@index([status])
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  LOAN
+  INVESTMENT
+  CREDIT
+}
+
+enum AccountStatus {
+  ACTIVE
+  FROZEN
+  CLOSED
+  PENDING
+  SUSPENDED
+}
+
+// Double-Entry Ledger System
+model Journal {
+  id          String   @id @default(cuid())
+  reference   String   @unique
+  description String
+  date        DateTime @default(now())
+  status      JournalStatus @default(POSTED)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  entries     LedgerEntry[]
+  transaction Transaction?
+  transfer    Transfer?
+  deposit     Deposit?
+  withdrawal  Withdrawal?
+  loanDisbursement LoanDisbursement?
+  loanRepayment    LoanRepayment?
+
+  @@index([reference])
+  @@index([date])
+  @@index([status])
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+  VOIDED
+}
+
+model LedgerEntry {
+  id          String   @id @default(cuid())
+  journalId   String
+  journal     Journal  @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  entryType   EntryType
+  amount      Decimal  @db.Decimal(20, 2)
+  balance     Decimal  @db.Decimal(20, 2)
+  description String
+  createdAt   DateTime @default(now())
+
+  // Relations
+  transaction    Transaction? @relation(fields: [transactionId], references: [id])
+  transactionId String?
+
+  @@index([journalId])
+  @@index([accountId])
+  @@index([entryType])
+}
+
+enum EntryType {
+  DEBIT
+  CREDIT
+}
+
+// ============================================
+// TRANSACTIONS
+// ============================================
+
+model Transaction {
+  id              String       @id @default(cuid())
+  reference       String       @unique
+  userId          String
+  user            User         @relation("UserTransactions", fields: [userId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type            TransactionType
+  amount          Decimal      @db.Decimal(20, 2)
+  currency        String       @default("USD")
+  description     String?
+  status          TransactionStatus @default(PENDING)
+  category        String?
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  journal         Journal?     @relation(fields: [journalId], references: [id])
+  journalId       String?
+  transfer        Transfer?
+  deposit         Deposit?
+  withdrawal      Withdrawal?
+  fee             Fee[]
+  auditLogs       AuditLog[]   @relation("TransactionAuditLogs")
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([reference])
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER
+  FEE
+  INTEREST
+  LOAN_DISBURSEMENT
+  LOAN_REPAYMENT
+  LOAN_INTEREST
+  INVESTMENT
+  SAVINGS_CONTRIBUTION
+  SAVINGS_WITHDRAWAL
+  REFUND
+  REVERSAL
+  ADJUSTMENT
+}
+
+enum TransactionStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REVERSED
+  CANCELLED
+  HOLD
+}
+
+model Fee {
+  id              String   @id @default(cuid())
+  transactionId   String
+  transaction     Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  type            FeeType
+  amount          Decimal  @db.Decimal(20, 2)
+  description     String?
+  createdAt       DateTime @default(now())
+
+  @@index([transactionId])
+  @@index([type])
+}
+
+enum FeeType {
+  TRANSFER_FEE
+  WITHDRAWAL_FEE
+  DEPOSIT_FEE
+  LOAN_FEE
+  SERVICE_FEE
+  OVERDRAFT_FEE
+  FX_FEE
+}
+
+// ============================================
+// TRANSFERS
+// ============================================
+
+model Transfer {
+  id              String       @id @default(cuid())
+  reference       String       @unique
+  fromUserId      String
+  fromUser        User         @relation("FromUser", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId        String
+  toUser          User         @relation("ToUser", fields: [toUserId], references: [id], onDelete: Cascade)
+  fromAccountId   String
+  fromAccount     Account      @relation("AccountTransfersFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
+  toAccountId     String
+  toAccount       Account      @relation("AccountTransfersTo", fields: [toAccountId], references: [id], onDelete: Cascade)
+  amount          Decimal      @db.Decimal(20, 2)
+  currency        String       @default("USD")
+  description     String?
+  status          TransferStatus @default(PENDING)
+  riskStatus      RiskStatus   @default(LOW)
+  idempotencyKey  String?      @unique
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  journal         Journal?     @relation(fields: [journalId], references: [id])
+  journalId       String?
+  transaction     Transaction?
+  beneficiary     Beneficiary? @relation(fields: [beneficiaryId], references: [id])
+  beneficiaryId   String?
+  auditLogs       AuditLog[]   @relation("TransferAuditLogs")
+  fraudAlerts     FraudAlert[]
+
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@index([reference])
+  @@index([status])
+  @@index([riskStatus])
+  @@index([idempotencyKey])
+  @@index([createdAt])
+}
+
+enum TransferStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REVERSED
+  CANCELLED
+  HOLD
+}
+
+enum RiskStatus {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// ============================================
+// DEPOSITS & WITHDRAWALS
+// ============================================
+
+model Deposit {
+  id              String       @id @default(cuid())
+  reference       String       @unique
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount          Decimal      @db.Decimal(20, 2)
+  currency        String       @default("USD")
+  method          DepositMethod
+  provider        String?
+  providerReference String?
+  status          DepositStatus @default(PENDING)
+  idempotencyKey  String?      @unique
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relations
+  journal         Journal?     @relation(fields: [journalId], references: [id])
+  journalId       String?
+  transaction     Transaction?
+  auditLogs       AuditLog[]   @relation("DepositAuditLogs")
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([reference])
+  @@index([provider])
+  @@index([status])
+  @@index([idempotencyKey])
+  @@index([createdAt])
+}
+
+enum DepositMethod {
+  ACH
+  WIRE
+  CARD
+  CASH
+  CHECK
+  MOBILE
+  CRYPTO
+}
+
+enum DepositStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REVERSED
+  CANCELLED
+  HOLD
+}
+
+model Withdrawal {
+  id              String        @id @default(cuid())
+  reference       String        @unique
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount          Decimal       @db.Decimal(20, 2)
+  currency        String        @default("USD")
+  method          WithdrawalMethod
+  destination     String?
+  provider        String?
+  providerReference String?
+  status          WithdrawalStatus @default(PENDING)
+  riskStatus      RiskStatus    @default(LOW)
+  idempotencyKey  String?       @unique
+  reviewNotes     String?
+  reviewedById    String?
+  reviewedBy      User?          @relation(fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  journal         Journal?      @relation(fields: [journalId], references: [id])
+  journalId       String?
+  transaction     Transaction?
+  auditLogs       AuditLog[]    @relation("WithdrawalAuditLogs")
+  fraudAlerts     FraudAlert[]
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([reference])
+  @@index([status])
+  @@index([riskStatus])
+  @@index([idempotencyKey])
+  @@index([createdAt])
+}
+
+enum WithdrawalMethod {
+  ACH
+  WIRE
+  CARD
+  CASH
+  CHECK
+  CRYPTO
+}
+
+enum WithdrawalStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REVERSED
+  CANCELLED
+  HOLD
+  APPROVED
+  REJECTED
+}
+
+// ============================================
+// BENEFICIARIES
+// ============================================
+
+model Beneficiary {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  accountNumber   String
+  accountName     String?
+  bankName        String
+  bankCode        String?
+  routingNumber   String?
+  swiftCode       String?
+  iban           String?
+  currency        String   @default("USD")
+  country         String   @default("US")
+  isVerified      Boolean  @default(false)
+  status          BeneficiaryStatus @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  transfers       Transfer[]
+  auditLogs       AuditLog[] @relation("BeneficiaryAuditLogs")
+
+  @@unique([userId, accountNumber])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum BeneficiaryStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+  DELETED
+}
+
+// ============================================
+// CARDS
+// ============================================
+
+model Card {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  cardNumber      String   @unique
+  maskedCardNumber String
+  cardType        CardType
+  cardBrand       CardBrand
+  expiryMonth     Int
+  expiryYear      Int
+  cvv            String?
+  status          CardStatus @default(ACTIVE)
+  isDefault       Boolean  @default(false)
+  dailyLimit      Decimal  @default(5000) @db.Decimal(20, 2)
+  monthlyLimit    Decimal  @default(50000) @db.Decimal(20, 2)
+  provider        String?
+  providerReference String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  transactions    Transaction[]
+  auditLogs       AuditLog[]   @relation("CardAuditLogs")
+  fraudAlerts     FraudAlert[]
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([cardNumber])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum CardType {
+  DEBIT
+  CREDIT
+  VIRTUAL
+  PREPAID
+}
+
+enum CardBrand {
+  VISA
+  MASTERCARD
+  AMEX
+  DISCOVER
+  OTHER
+}
+
+enum CardStatus {
+  ACTIVE
+  INACTIVE
+  FROZEN
+  LOST
+  STOLEN
+  EXPIRED
+  CANCELLED
+}
+
+// ============================================
+// KYC & COMPLIANCE
+// ============================================
+
+model KYCProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          KYCStatus @default(PENDING)
+  tier            KYCTier   @default(TIER_1)
+  verifiedAt      DateTime?
+  verifiedById    String?
+  verifiedBy      User?    @relation(fields: [verifiedById], references: [id])
+  rejectionReason String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  documents       KYCDocument[]
+  auditLogs       AuditLog[]   @relation("KYCAuditLogs")
+
+  @@index([userId])
+  @@index([status])
+  @@index([tier])
+}
+
+enum KYCStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+  SUSPENDED
+}
+
+enum KYCTier {
+  TIER_0
+  TIER_1
+  TIER_2
+  TIER_3
+}
+
+model KYCDocument {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kycProfileId    String
+  kycProfile      KYCProfile @relation(fields: [kycProfileId], references: [id], onDelete: Cascade)
+  documentType    KYCDocumentType
+  fileName        String
+  fileUrl         String
+  fileSize        Int
+  mimeType        String
+  status          DocumentStatus @default(PENDING)
+  reviewNotes     String?
+  reviewedById    String?
+  reviewedBy      User?    @relation(fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  auditLogs       AuditLog[] @relation("KYCDocumentAuditLogs")
+
+  @@index([userId])
+  @@index([kycProfileId])
+  @@index([documentType])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum KYCDocumentType {
+  PASSPORT
+  DRIVERS_LICENSE
+  NATIONAL_ID
+  UTILITY_BILL
+  BANK_STATEMENT
+  SELFIE
+  PROOF_OF_ADDRESS
+  TAX_ID
+  BUSINESS_LICENSE
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+// ============================================
+// LOANS
+// ============================================
+
+model LoanApplication {
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  requestedAmount Decimal  @db.Decimal(20, 2)
+  approvedAmount  Decimal?  @db.Decimal(20, 2)
+  termMonths      Int?
+  interestRate    Decimal? @db.Decimal(10, 4)
+  purpose         String?
+  status          LoanApplicationStatus @default(DRAFT)
+  reviewNotes     String?
+  reviewedById    String?
+  reviewedBy      User?    @relation(fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  disbursements   LoanDisbursement[]
+  repayments      LoanRepayment[]
+  auditLogs       AuditLog[] @relation("LoanApplicationAuditLogs")
+
+  @@index([userId])
+  @@index([reference])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum LoanApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model LoanDisbursement {
+  id              String   @id @default(cuid())
+  loanApplicationId String
+  loanApplication  LoanApplication @relation(fields: [loanApplicationId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount          Decimal @db.Decimal(20, 2)
+  disbursedAt     DateTime @default(now())
+  status          DisbursementStatus @default(PENDING)
+  journalId       String?
+  journal         Journal? @relation(fields: [journalId], references: [id])
+  transactionId   String?
+  transaction     Transaction? @relation(fields: [transactionId], references: [id])
+
+  // Relations
+  auditLogs       AuditLog[] @relation("LoanDisbursementAuditLogs")
+
+  @@index([loanApplicationId])
+  @@index([accountId])
+  @@index([status])
+  @@index([disbursedAt])
+}
+
+enum DisbursementStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+model LoanRepayment {
+  id              String   @id @default(cuid())
+  loanApplicationId String
+  loanApplication  LoanApplication @relation(fields: [loanApplicationId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount          Decimal @db.Decimal(20, 2)
+  principalAmount Decimal @db.Decimal(20, 2)
+  interestAmount  Decimal @db.Decimal(20, 2)
+  paymentDate     DateTime @default(now())
+  dueDate         DateTime?
+  status          RepaymentStatus @default(PENDING)
+  journalId       String?
+  journal         Journal? @relation(fields: [journalId], references: [id])
+  transactionId   String?
+  transaction     Transaction? @relation(fields: [transactionId], references: [id])
+
+  // Relations
+  auditLogs       AuditLog[] @relation("LoanRepaymentAuditLogs")
+
+  @@index([loanApplicationId])
+  @@index([accountId])
+  @@index([paymentDate])
+  @@index([status])
+}
+
+enum RepaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+  LATE
+}
+
+// ============================================
+// INVESTMENTS
+// ============================================
+
+model InvestmentPortfolio {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  status          PortfolioStatus @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  investments     Investment[]
+  transactions    InvestmentTransaction[]
+  auditLogs       AuditLog[] @relation("InvestmentPortfolioAuditLogs")
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([status])
+}
+
+enum PortfolioStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+}
+
+model Investment {
+  id              String   @id @default(cuid())
+  portfolioId     String
+  portfolio       InvestmentPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  symbol          String
+  name            String
+  investmentType  InvestmentType
+  quantity        Decimal @db.Decimal(20, 8)
+  purchasePrice   Decimal @db.Decimal(20, 2)
+  currentPrice    Decimal? @db.Decimal(20, 2)
+  purchasedAt     DateTime @default(now())
+  status          InvestmentStatus @default(ACTIVE)
+  metadata        Json?
+
+  // Relations
+  transactions    InvestmentTransaction[]
+
+  @@unique([portfolioId, symbol])
+  @@index([portfolioId])
+  @@index([symbol])
+  @@index([status])
+}
+
+enum InvestmentType {
+  STOCK
+  BOND
+  ETF
+  MUTUAL_FUND
+  CRYPTO
+  COMMODITY
+  REAL_ESTATE
+  OTHER
+}
+
+enum InvestmentStatus {
+  ACTIVE
+  SOLD
+  PENDING
+}
+
+model InvestmentTransaction {
+  id              String   @id @default(cuid())
+  portfolioId     String
+  portfolio       InvestmentPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  investmentId    String
+  investment      Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactionType InvestmentTransactionType
+  quantity        Decimal @db.Decimal(20, 8)
+  price           Decimal @db.Decimal(20, 2)
+  amount          Decimal @db.Decimal(20, 2)
+  fee             Decimal @default(0) @db.Decimal(20, 2)
+  executedAt      DateTime @default(now())
+  status          TransactionStatus @default(COMPLETED)
+
+  // Relations
+  journalId       String?
+  journal         Journal? @relation(fields: [journalId], references: [id])
+
+  @@index([portfolioId])
+  @@index([investmentId])
+  @@index([accountId])
+  @@index([transactionType])
+  @@index([executedAt])
+}
+
+enum InvestmentTransactionType {
+  BUY
+  SELL
+  DIVIDEND
+  INTEREST
+  SPLIT
+  MERGER
+  FEE
+}
+
+// ============================================
+// SAVINGS
+// ============================================
+
+model SavingsGoal {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  targetAmount    Decimal  @db.Decimal(20, 2)
+  currentAmount   Decimal  @default(0) @db.Decimal(20, 2)
+  targetDate      DateTime?
+  status          SavingsGoalStatus @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  contributions   SavingsContribution[]
+  withdrawals     SavingsWithdrawal[]
+  auditLogs       AuditLog[] @relation("SavingsGoalAuditLogs")
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum SavingsGoalStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  PAUSED
+}
+
+model SavingsContribution {
+  id              String   @id @default(cuid())
+  savingsGoalId   String
+  savingsGoal     SavingsGoal @relation(fields: [savingsGoalId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount          Decimal @db.Decimal(20, 2)
+  description     String?
+  contributedAt   DateTime @default(now())
+  status          ContributionStatus @default(COMPLETED)
+  journalId       String?
+  journal         Journal? @relation(fields: [journalId], references: [id])
+
+  // Relations
+  auditLogs       AuditLog[] @relation("SavingsContributionAuditLogs")
+
+  @@index([savingsGoalId])
+  @@index([accountId])
+  @@index([contributedAt])
+  @@index([status])
+}
+
+enum ContributionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+model SavingsWithdrawal {
+  id              String   @id @default(cuid())
+  savingsGoalId   String
+  savingsGoal     SavingsGoal @relation(fields: [savingsGoalId], references: [id], onDelete: Cascade)
+  accountId       String
+  account         Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  amount          Decimal @db.Decimal(20, 2)
+  description     String?
+  withdrawnAt     DateTime @default(now())
+  status          WithdrawalStatus @default(COMPLETED)
+  journalId       String?
+  journal         Journal? @relation(fields: [journalId], references: [id])
+
+  // Relations
+  auditLogs       AuditLog[] @relation("SavingsWithdrawalAuditLogs")
+
+  @@index([savingsGoalId])
+  @@index([accountId])
+  @@index([withdrawnAt])
+}
+
+// ============================================
+// SUPPORT
+// ============================================
+
+model SupportTicket {
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject         String
+  category        SupportCategory
+  priority        SupportPriority @default(MEDIUM)
+  description     String
+  status          SupportTicketStatus @default(OPEN)
+  assignedToId    String?
+  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
+  resolvedAt      DateTime?
+  resolvedById    String?
+  resolvedBy      User?    @relation(fields: [resolvedById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  messages        SupportMessage[]
+  attachments     SupportAttachment[]
+  auditLogs       AuditLog[] @relation("SupportTicketAuditLogs")
+
+  @@index([userId])
+  @@index([reference])
+  @@index([category])
+  @@index([priority])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([createdAt])
+}
+
+enum SupportCategory {
+  ACCOUNT
+  TRANSACTION
+  TRANSFER
+  DEPOSIT
+  WITHDRAWAL
+  CARD
+  KYC
+  LOAN
+  INVESTMENT
+  SAVINGS
+  SECURITY
+  TECHNICAL
+  BILLING
+  GENERAL
+}
+
+enum SupportPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+model SupportMessage {
+  id              String   @id @default(cuid())
+  ticketId        String
+  ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  message         String
+  isInternal      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  // Relations
+  attachments     SupportAttachment[]
+
+  @@index([ticketId])
+  @@index([senderId])
+  @@index([createdAt])
+}
+
+model SupportAttachment {
+  id              String   @id @default(cuid())
+  messageId       String?
+  message         SupportMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  ticketId        String
+  ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fileName        String
+  fileUrl         String
+  fileSize        Int
+  mimeType        String
+  createdAt       DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([messageId])
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  message         String
+  type            NotificationType
+  category        NotificationCategory
+  isRead          Boolean  @default(false)
+  readAt          DateTime?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+  @@index([category])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  ERROR
+  SUCCESS
+}
+
+enum NotificationCategory {
+  TRANSACTION
+  TRANSFER
+  DEPOSIT
+  WITHDRAWAL
+  KYC
+  SECURITY
+  LOAN
+  INVESTMENT
+  SAVINGS
+  SUPPORT
+  SYSTEM
+  PROMOTION
+}
+
+// ============================================
+// SECURITY
+// ============================================
+
+model SecuritySettings {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret String?
+  backupCodes     Json?
+  loginAlerts     Boolean @default(true)
+  transactionAlerts Boolean @default(true)
+  ipWhitelist     String[] @default([])
+  lastLoginIp     String?
+  lastLoginAt     DateTime?
+  failedAttempts  Int      @default(0)
+  lockedUntil     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  auditLogs       AuditLog[] @relation("SecuritySettingsAuditLogs")
+  sessions        Session[]
+}
+
+model Profile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  avatarUrl       String?
+  bio             String?
+  preferredLanguage String @default("en")
+  timezone        String   @default("UTC")
+  notificationPreferences Json @default({"email": true, "push": true, "sms": false})
+  privacySettings Json @default({"showBalance": true, "showTransactions": true})
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================
+// AUDIT & FRAUD
+// ============================================
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  actorId         String?
+  actor           User?    @relation("UserAuditLogs", fields: [actorId], references: [id])
+  action          AuditAction
+  resourceType    ResourceType
+  resourceId      String
+  oldValues       Json?
+  newValues       Json?
+  metadata        Json?
+  ipAddress       String?
+  userAgent       String?
+  status          AuditStatus @default(SUCCESS)
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+
+  // Polymorphic relations for different resource types
+  user            User?    @relation("TransactionAuditLogs", fields: [resourceId], references: [id])
+  transaction     Transaction? @relation("TransactionAuditLogs", fields: [resourceId], references: [id])
+  transfer        Transfer? @relation("TransferAuditLogs", fields: [resourceId], references: [id])
+  deposit         Deposit? @relation("DepositAuditLogs", fields: [resourceId], references: [id])
+  withdrawal      Withdrawal? @relation("WithdrawalAuditLogs", fields: [resourceId], references: [id])
+  card            Card? @relation("CardAuditLogs", fields: [resourceId], references: [id])
+  beneficiary     Beneficiary? @relation("BeneficiaryAuditLogs", fields: [resourceId], references: [id])
+  kycProfile      KYCProfile? @relation("KYCAuditLogs", fields: [resourceId], references: [id])
+  kycDocument     KYCDocument? @relation("KYCDocumentAuditLogs", fields: [resourceId], references: [id])
+  loanApplication LoanApplication? @relation("LoanApplicationAuditLogs", fields: [resourceId], references: [id])
+  loanDisbursement LoanDisbursement? @relation("LoanDisbursementAuditLogs", fields: [resourceId], references: [id])
+  loanRepayment    LoanRepayment? @relation("LoanRepaymentAuditLogs", fields: [resourceId], references: [id])
+  investmentPortfolio InvestmentPortfolio? @relation("InvestmentPortfolioAuditLogs", fields: [resourceId], references: [id])
+  savingsGoal     SavingsGoal? @relation("SavingsGoalAuditLogs", fields: [resourceId], references: [id])
+  savingsContribution SavingsContribution? @relation("SavingsContributionAuditLogs", fields: [resourceId], references: [id])
+  savingsWithdrawal SavingsWithdrawal? @relation("SavingsWithdrawalAuditLogs", fields: [resourceId], references: [id])
+  supportTicket   SupportTicket? @relation("SupportTicketAuditLogs", fields: [resourceId], references: [id])
+  securitySettings SecuritySettings? @relation("SecuritySettingsAuditLogs", fields: [resourceId], references: [id])
+
+  @@index([actorId])
+  @@index([action])
+  @@index([resourceType])
+  @@index([resourceId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+enum AuditAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  FREEZE
+  UNFREEZE
+  CLOSE
+  OPEN
+  REVIEW
+  ESCALATE
+  RESOLVE
+  LOGIN
+  LOGOUT
+  VERIFY
+  SUSPEND
+  ACTIVATE
+}
+
+enum ResourceType {
+  USER
+  ACCOUNT
+  TRANSACTION
+  TRANSFER
+  DEPOSIT
+  WITHDRAWAL
+  CARD
+  BENEFICIARY
+  KYC_PROFILE
+  KYC_DOCUMENT
+  LOAN_APPLICATION
+  LOAN_DISBURSEMENT
+  LOAN_REPAYMENT
+  INVESTMENT_PORTFOLIO
+  INVESTMENT
+  INVESTMENT_TRANSACTION
+  SAVINGS_GOAL
+  SAVINGS_CONTRIBUTION
+  SAVINGS_WITHDRAWAL
+  SUPPORT_TICKET
+  SUPPORT_MESSAGE
+  NOTIFICATION
+  SECURITY_SETTINGS
+  PROFILE
+  ROLE
+  PERMISSION
+  SETTING
+}
+
+enum AuditStatus {
+  SUCCESS
+  FAILURE
+}
+
+model FraudAlert {
+  id              String   @id @default(cuid())
+  reference       String   @unique
+  userId          String?
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId       String?
+  account         Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transactionId   String?
+  transaction     Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transferId      String?
+  transfer        Transfer? @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  withdrawalId    String?
+  withdrawal      Withdrawal? @relation(fields: [withdrawalId], references: [id], onDelete: Cascade)
+  cardId          String?
+  card            Card? @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  alertType       FraudAlertType
+  riskScore       Int
+  description     String
+  status          FraudAlertStatus @default(OPEN)
+  assignedToId    String?
+  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
+  resolvedAt      DateTime?
+  resolvedById    String?
+  resolvedBy      User?    @relation(fields: [resolvedById], references: [id])
+  notes           String?
+  metadata        Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  auditLogs       AuditLog[] @relation("FraudAlertAuditLogs")
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([transactionId])
+  @@index([transferId])
+  @@index([withdrawalId])
+  @@index([cardId])
+  @@index([alertType])
+  @@index([status])
+  @@index([riskScore])
+  @@index([assignedToId])
+  @@index([createdAt])
+}
+
+enum FraudAlertType {
+  UNUSUAL_ACTIVITY
+  HIGH_RISK_TRANSACTION
+  VELOCITY_VIOLATION
+  LOCATION_MISMATCH
+  DEVICE_MISMATCH
+  BEHAVIORAL_ANOMALY
+  CHARGEBACK
+  IDENTITY_THEFT
+  ACCOUNT_TAKEOVER
+  MONEY_LAUNDERING
+  TERRORIST_FINANCING
+  OTHER
+}
+
+enum FraudAlertStatus {
+  OPEN
+  UNDER_REVIEW
+  ESCALATED
+  RESOLVED
+  DISMISSED
+  FALSE_POSITIVE
+}
+
+// ============================================
+// RATE LIMITING
+// ============================================
+
+model RateLimit {
+  id              String   @id @default(cuid())
+  key             String
+  endpoint        String
+  count           Int      @default(0)
+  windowStart     DateTime @default(now())
+  windowEnd       DateTime
+  createdAt       DateTime @default(now())
+
+  @@unique([key, endpoint])
+  @@index([key])
+  @@index([endpoint])
+  @@index([windowStart])
+  @@index([windowEnd])
+}
+
+// ============================================
+// WEBHOOKS
+// ============================================
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  eventId         String   @unique
+  provider        String
+  eventType       String
+  payload         Json
+  rawPayload      String?
+  signature       String?
+  processed       Boolean  @default(false)
+  processedAt     DateTime?
+  errorMessage    String?
+  retryCount      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  auditLogs       AuditLog[] @relation("WebhookEventAuditLogs")
+
+  @@index([provider])
+  @@index([eventType])
+  @@index([eventId])
+  @@index([processed])
+  @@index([createdAt])
+}
+
+// ============================================
+// SETTINGS
+// ============================================
+
+model SystemSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           Json
+  description     String?
+  category        SettingCategory
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category])
+  @@index([key])
+}
+
+enum SettingCategory {
+  GENERAL
+  TRANSACTION_LIMITS
+  SECURITY
+  NOTIFICATIONS
+  PROVIDER_CONFIGURATION
+  FEATURE_FLAGS
+  MAINTENANCE
+}
+
+model Permission {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?
+  category        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  roles           RolePermission[]
+
+  @@index([name])
+  @@index([category])
+}
+
+model RolePermission {
+  id              String   @id @default(cuid())
+  role            Role
+  permissionId    String
+  permission      Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+
+  @@unique([role, permissionId])
+  @@index([role])
+  @@index([permissionId])
+}
