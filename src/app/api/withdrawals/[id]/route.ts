@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { TransactionService } from '@/lib/services/transaction-service';
+import { WithdrawalService } from '@/lib/services/withdrawal-service';
 import { success } from '@/lib/middleware/response';
 import { handleRouteError } from '@/lib/middleware/error-handler';
 import { getAuthUser } from '@/lib/middleware/auth';
 
 // ============================================
-// GET /api/transactions/:id
-// Get transaction details by ID
+// GET /api/withdrawals/:id
+// Get withdrawal details by ID
 // ============================================
 
 export async function GET(
@@ -16,7 +16,7 @@ export async function GET(
   return handleRouteError(request, { params }, async () => {
     const user = getAuthUser(request);
     
-    const result = await TransactionService.getTransactionById(params.id, user.id);
+    const result = await WithdrawalService.getWithdrawalById(params.id, user.id);
     
     return success(result);
   });

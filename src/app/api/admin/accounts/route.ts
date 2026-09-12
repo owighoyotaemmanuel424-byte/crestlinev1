@@ -1,71 +1,21 @@
 import { NextResponse } from 'next/server';
-import { auth } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { z } from 'zod';
+import { AccountService } from '@/lib/services/account-service';
+import { success, paginated } from '@/lib/middleware/response';
+import { handleRouteError } from '@/lib/middleware/error-handler';
+import { getAuthUser, adminMiddleware } from '@/lib/middleware/auth';
 
+// GET /api/admin/accounts - List all accounts (admin only)
 export async function GET(request: Request) {
-  try {
-    const session = await auth();
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!['ADMIN', 'SUPER_ADMIN', 'SUPPORT', 'OPERATOR'].includes(session.user.role)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const { search, accountType, status, customerId, page, limit } = Object.fromEntries(
-      new URL(request.url).searchParams.entries()
-    );
-    const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 20;
-    const skip = (pageNum - 1) * limitNum;
-
-    const where: any = {};
-    if (search) {
-      where.OR = [
-        { accountNumber: { contains: search, mode: 'insensitive' } },
-        { name: { contains: search, mode: 'insensitive' } },
-        { user: { firstName: { contains: search, mode: 'insensitive' } } },
-        { user: { lastName: { contains: search, mode: 'insensitive' } } },
-        { user: { email: { contains: search, mode: 'insensitive' } } },
-      ];
-    }
-    if (accountType && accountType !== 'ALL') where.accountType = accountType;
-    if (status && status !== 'ALL') where.status = status;
-    if (customerId) where.userId = customerId;
-
-    const [accounts, total] = await Promise.all([
-      prisma.account.findMany({
-        where,
-        skip,
-        take: limitNum,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          user: { select: { id: true, email: true, firstName: true, lastName: true, status: true } },
-          _count: {
-            select: {
-              transactions: true,
-              transfersFrom: true,
-              transfersTo: true,
-              deposits: true,
-              withdrawals: true,
-            },
-          },
-        },
-      }),
-      prisma.account.count({ where }),
-    ]);
-
-    return NextResponse.json({
-      accounts,
-      total,
-      page: pageNum,
-      limit: limitNum,
-      totalPages: Math.ceil(total / limitNum),
-    });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch accounts' },
-      { status: 500 }
-    );
-  }
+  return handleRouteError(request, { params: {} }, async () => {
+    const user = getAuthUser(request);
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '20');
+    const status = searchParams.get('status') as any;
+    const userId = searchParams.get('userId');
+    
+    const result = await AccountService.listAllAccounts(user.id, page, limit, status, userId);
+    return paginated(result.accounts, result.page, result.limit, result.total);
+  });
 }
