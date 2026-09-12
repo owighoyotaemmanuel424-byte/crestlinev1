@@ -1,1 +1,1 @@
-export const test = "hello";
+// deleted
