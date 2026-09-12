@@ -1,0 +1,16 @@
+node_modules
+.next
+Dockerfile
+docker-compose.yml
+.git
+.gitignore
+.pnpm-store
+*.md
+*.log
+*.lock
+.env
+.env.*
+!.env.example
+LICENSE
+README.md
+CHANGELOG.md
