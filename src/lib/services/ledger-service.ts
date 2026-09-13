@@ -8,6 +8,7 @@ import {
   AppError,
   InsufficientBalanceError,
 } from '../utils/errors';
+import { Decimal } from '@prisma/client/runtime/library';
 import type {
   User,
   Account,
@@ -28,6 +29,25 @@ import type {
   AccountStatus,
   Role,
 } from '@prisma/client';
+
+// ============================================
+// DECIMAL UTILITIES
+// ============================================
+
+/**
+ * Convert amount to Decimal for safe financial arithmetic
+ * Accepts number, string, or Decimal
+ */
+function toDecimal(amount: number | string | Decimal): Decimal {
+  if (amount instanceof Decimal) {
+    return amount;
+  }
+  if (typeof amount === 'string') {
+    return new Decimal(amount);
+  }
+  // For numbers, convert to string first to avoid floating point precision loss
+  return new Decimal(amount.toString());
+}
 
 // ============================================
 // INTERFACES & TYPES
@@ -52,7 +72,7 @@ export interface JournalData {
 export interface LedgerEntryData {
   accountId: string;
   entryType: EntryType;
-  amount: number | string; // Accept both number and Decimal string
+  amount: number | string | Decimal;
   description: string;
   transactionId?: string;
 }
@@ -168,18 +188,18 @@ export class LedgerService {
       );
     }
 
-    // Validate that debits equal credits
+    // Validate that debits equal credits using Decimal arithmetic
     if (LEDGER_CONFIG.REQUIRE_BALANCED_JOURNALS) {
       const totalDebits = data.entries
         .filter(e => e.entryType === 'DEBIT')
-        .reduce((sum, e) => sum + this.toDecimalNumber(e.amount), 0);
+        .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0));
       const totalCredits = data.entries
         .filter(e => e.entryType === 'CREDIT')
-        .reduce((sum, e) => sum + this.toDecimalNumber(e.amount), 0);
+        .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0));
 
-      if (totalDebits !== totalCredits) {
+      if (!totalDebits.equals(totalCredits)) {
         throw new ValidationError(
-          `Journal is unbalanced: Debits (${totalDebits}) != Credits (${totalCredits})`
+          `Journal is unbalanced: Debits (${totalDebits.toString()}) != Credits (${totalCredits.toString()})`
         );
       }
     }
@@ -207,16 +227,20 @@ export class LedgerService {
       }
     }
 
-    // Check for sufficient balance on debit accounts
+    // Check for sufficient balance on debit accounts using Decimal comparison
     for (const entry of data.entries.filter(e => e.entryType === 'DEBIT')) {
       const account = accounts.find(a => a.id === entry.accountId);
-      if (account && account.availableBalance < this.toDecimalNumber(entry.amount)) {
-        if (!LEDGER_CONFIG.ALLOW_NEGATIVE_BALANCES) {
-          throw new InsufficientBalanceError(
-            account.id,
-            this.toDecimalNumber(entry.amount),
-            Number(account.availableBalance)
-          );
+      if (account) {
+        const entryAmount = toDecimal(entry.amount);
+        const availableBalance = toDecimal(account.availableBalance);
+        if (availableBalance.lessThan(entryAmount)) {
+          if (!LEDGER_CONFIG.ALLOW_NEGATIVE_BALANCES) {
+            throw new InsufficientBalanceError(
+              account.id,
+              entryAmount.toNumber(),
+              availableBalance.toNumber()
+            );
+          }
         }
       }
     }
@@ -266,7 +290,7 @@ export class LedgerService {
       },
     });
 
-    // Create entries
+    // Create entries using Decimal for amounts
     const entries = await Promise.all(
       data.entries.map(entry =>
         prisma.ledgerEntry.create({
@@ -274,7 +298,7 @@ export class LedgerService {
             journalId: journal.id,
             accountId: entry.accountId,
             entryType: entry.entryType,
-            amount: this.toDecimal(entry.amount),
+            amount: toDecimal(entry.amount),
             description: entry.description || '',
             transactionId: entry.transactionId || null,
           },
@@ -298,10 +322,12 @@ export class LedgerService {
           entryCount: entries.length,
           totalDebits: entries
             .filter(e => e.entryType === 'DEBIT')
-            .reduce((sum, e) => sum + Number(e.amount), 0),
+            .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0))
+            .toNumber(),
           totalCredits: entries
             .filter(e => e.entryType === 'CREDIT')
-            .reduce((sum, e) => sum + Number(e.amount), 0),
+            .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0))
+            .toNumber(),
         },
         metadata: data.metadata,
         status: 'SUCCESS',
@@ -651,21 +677,21 @@ export class LedgerService {
       orderBy: { createdAt: 'asc' },
     });
 
-    // Calculate balance from entries
-    let balance = 0;
+    // Calculate balance from entries using Decimal arithmetic
+    let balance = new Decimal(0);
     for (const entry of entries) {
-      const amount = Number(entry.amount);
+      const amount = toDecimal(entry.amount);
       if (entry.entryType === 'DEBIT') {
-        balance -= amount;
+        balance = balance.minus(amount);
       } else {
-        balance += amount;
+        balance = balance.plus(amount);
       }
     }
 
     return {
       accountId: account.id,
-      balance,
-      availableBalance: balance,
+      balance: balance.toNumber(),
+      availableBalance: balance.toNumber(),
       currency: account.currency,
       calculatedAt: new Date(),
       entries,
@@ -697,8 +723,8 @@ export class LedgerService {
 
     return {
       account,
-      balance: Number(account.balance),
-      availableBalance: Number(account.availableBalance),
+      balance: toDecimal(account.balance).toNumber(),
+      availableBalance: toDecimal(account.availableBalance).toNumber(),
       currency: account.currency,
     };
   }
@@ -727,7 +753,7 @@ export class LedgerService {
       },
     });
 
-    const updatedAccounts: number = 0;
+    let updatedAccounts: number = 0;
     const discrepancies: Array<{
       accountId: string;
       storedBalance: number;
@@ -736,20 +762,23 @@ export class LedgerService {
     }> = [];
 
     for (const account of accounts) {
+      // Calculate balance using Decimal arithmetic
       const calculatedBalance = account.ledgerEntries.reduce((sum, entry) => {
-        const amount = Number(entry.amount);
-        return entry.entryType === 'DEBIT' ? sum - amount : sum + amount;
-      }, 0);
+        const amount = toDecimal(entry.amount);
+        return entry.entryType === 'DEBIT' ? sum.minus(amount) : sum.plus(amount);
+      }, new Decimal(0));
 
-      const storedBalance = Number(account.balance);
-      const difference = calculatedBalance - storedBalance;
+      const storedBalance = toDecimal(account.balance);
+      const difference = calculatedBalance.minus(storedBalance);
 
-      if (Math.abs(difference) > 0.01) {
+      // Use a small epsilon for comparison due to potential rounding
+      const epsilon = new Decimal(0.01);
+      if (difference.abs().greaterThan(epsilon)) {
         discrepancies.push({
           accountId: account.id,
-          storedBalance,
-          calculatedBalance,
-          difference,
+          storedBalance: storedBalance.toNumber(),
+          calculatedBalance: calculatedBalance.toNumber(),
+          difference: difference.toNumber(),
         });
 
         // Update account balance
@@ -820,25 +849,25 @@ export class LedgerService {
     const accountBalances = accounts.map(account => {
       const debitTotal = account.ledgerEntries
         .filter(e => e.entryType === 'DEBIT')
-        .reduce((sum, e) => sum + Number(e.amount), 0);
+        .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0));
       const creditTotal = account.ledgerEntries
         .filter(e => e.entryType === 'CREDIT')
-        .reduce((sum, e) => sum + Number(e.amount), 0);
-      const netBalance = creditTotal - debitTotal;
+        .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0));
+      const netBalance = creditTotal.minus(debitTotal);
 
       return {
         accountId: account.id,
         accountNumber: account.accountNumber,
         userId: account.userId,
         currency: account.currency,
-        debitTotal,
-        creditTotal,
-        netBalance,
+        debitTotal: debitTotal.toNumber(),
+        creditTotal: creditTotal.toNumber(),
+        netBalance: netBalance.toNumber(),
       };
     });
 
-    const totalDebits = accountBalances.reduce((sum, a) => sum + a.debitTotal, 0);
-    const totalCredits = accountBalances.reduce((sum, a) => sum + a.creditTotal, 0);
+    const totalDebits = accountBalances.reduce((sum, a) => sum.plus(new Decimal(a.debitTotal)), new Decimal(0)).toNumber();
+    const totalCredits = accountBalances.reduce((sum, a) => sum.plus(new Decimal(a.creditTotal)), new Decimal(0)).toNumber();
     const isBalanced = totalDebits === totalCredits;
 
     return {
@@ -877,7 +906,7 @@ export class LedgerService {
     const totalJournals = await prisma.journal.count({ where });
     const totalEntries = await prisma.ledgerEntry.count({ where });
 
-    // Get total debits and credits
+    // Get total debits and credits using Decimal arithmetic
     const entries = await prisma.ledgerEntry.findMany({
       where,
       select: {
@@ -894,10 +923,12 @@ export class LedgerService {
 
     const totalDebits = entries
       .filter(e => e.entryType === 'DEBIT')
-      .reduce((sum, e) => sum + Number(e.amount), 0);
+      .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0))
+      .toNumber();
     const totalCredits = entries
       .filter(e => e.entryType === 'CREDIT')
-      .reduce((sum, e) => sum + Number(e.amount), 0);
+      .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0))
+      .toNumber();
 
     // Group by account
     const byAccount: Record<string, { debit: number; credit: number; balance: number }> = {};
@@ -905,13 +936,13 @@ export class LedgerService {
       if (!byAccount[entry.accountId]) {
         byAccount[entry.accountId] = { debit: 0, credit: 0, balance: 0 };
       }
-      const amount = Number(entry.amount);
+      const amount = toDecimal(entry.amount);
       if (entry.entryType === 'DEBIT') {
-        byAccount[entry.accountId].debit += amount;
-        byAccount[entry.accountId].balance -= amount;
+        byAccount[entry.accountId].debit = new Decimal(byAccount[entry.accountId].debit).plus(amount).toNumber();
+        byAccount[entry.accountId].balance = new Decimal(byAccount[entry.accountId].balance).minus(amount).toNumber();
       } else {
-        byAccount[entry.accountId].credit += amount;
-        byAccount[entry.accountId].balance += amount;
+        byAccount[entry.accountId].credit = new Decimal(byAccount[entry.accountId].credit).plus(amount).toNumber();
+        byAccount[entry.accountId].balance = new Decimal(byAccount[entry.accountId].balance).plus(amount).toNumber();
       }
     }
 
@@ -922,13 +953,13 @@ export class LedgerService {
       if (!byCurrency[currency]) {
         byCurrency[currency] = { debit: 0, credit: 0, balance: 0 };
       }
-      const amount = Number(entry.amount);
+      const amount = toDecimal(entry.amount);
       if (entry.entryType === 'DEBIT') {
-        byCurrency[currency].debit += amount;
-        byCurrency[currency].balance -= amount;
+        byCurrency[currency].debit = new Decimal(byCurrency[currency].debit).plus(amount).toNumber();
+        byCurrency[currency].balance = new Decimal(byCurrency[currency].balance).minus(amount).toNumber();
       } else {
-        byCurrency[currency].credit += amount;
-        byCurrency[currency].balance += amount;
+        byCurrency[currency].credit = new Decimal(byCurrency[currency].credit).plus(amount).toNumber();
+        byCurrency[currency].balance = new Decimal(byCurrency[currency].balance).plus(amount).toNumber();
       }
     }
 
@@ -952,7 +983,7 @@ export class LedgerService {
   static async createDepositJournal(
     depositId: string,
     accountId: string,
-    amount: number,
+    amount: number | string | Decimal,
     currency: string = 'USD',
     description: string = 'Deposit'
   ): Promise<JournalResult> {
@@ -972,7 +1003,7 @@ export class LedgerService {
       depositId,
       metadata: {
         depositId,
-        amount,
+        amount: toDecimal(amount).toString(),
         currency,
       },
     });
@@ -984,7 +1015,7 @@ export class LedgerService {
   static async createWithdrawalJournal(
     withdrawalId: string,
     accountId: string,
-    amount: number,
+    amount: number | string | Decimal,
     currency: string = 'USD',
     description: string = 'Withdrawal'
   ): Promise<JournalResult> {
@@ -1004,7 +1035,7 @@ export class LedgerService {
       withdrawalId,
       metadata: {
         withdrawalId,
-        amount,
+        amount: toDecimal(amount).toString(),
         currency,
       },
     });
@@ -1017,7 +1048,7 @@ export class LedgerService {
     transferId: string,
     fromAccountId: string,
     toAccountId: string,
-    amount: number,
+    amount: number | string | Decimal,
     currency: string = 'USD',
     description: string = 'Transfer'
   ): Promise<JournalResult> {
@@ -1045,7 +1076,7 @@ export class LedgerService {
         transferId,
         fromAccountId,
         toAccountId,
-        amount,
+        amount: toDecimal(amount).toString(),
         currency,
       },
     });
@@ -1057,7 +1088,7 @@ export class LedgerService {
   static async createLoanDisbursementJournal(
     disbursementId: string,
     accountId: string,
-    amount: number,
+    amount: number | string | Decimal,
     currency: string = 'USD',
     description: string = 'Loan Disbursement'
   ): Promise<JournalResult> {
@@ -1077,7 +1108,7 @@ export class LedgerService {
       loanDisbursementId: disbursementId,
       metadata: {
         disbursementId,
-        amount,
+        amount: toDecimal(amount).toString(),
         currency,
       },
     });
@@ -1089,9 +1120,9 @@ export class LedgerService {
   static async createLoanRepaymentJournal(
     repaymentId: string,
     accountId: string,
-    amount: number,
-    principalAmount: number,
-    interestAmount: number,
+    amount: number | string | Decimal,
+    principalAmount: number | string | Decimal,
+    interestAmount: number | string | Decimal,
     currency: string = 'USD',
     description: string = 'Loan Repayment'
   ): Promise<JournalResult> {
@@ -1107,15 +1138,15 @@ export class LedgerService {
           accountId,
           entryType: 'DEBIT',
           amount,
-          description: `${description} - Principal: ${principalAmount}, Interest: ${interestAmount}`,
+          description: `${description} - Principal: ${toDecimal(principalAmount).toString()}, Interest: ${toDecimal(interestAmount).toString()}`,
         },
       ],
       loanRepaymentId: repaymentId,
       metadata: {
         repaymentId,
-        amount,
-        principalAmount,
-        interestAmount,
+        amount: toDecimal(amount).toString(),
+        principalAmount: toDecimal(principalAmount).toString(),
+        interestAmount: toDecimal(interestAmount).toString(),
         currency,
       },
     });
@@ -1127,7 +1158,7 @@ export class LedgerService {
   static async createFeeJournal(
     transactionId: string,
     accountId: string,
-    amount: number,
+    amount: number | string | Decimal,
     currency: string = 'USD',
     description: string = 'Fee'
   ): Promise<JournalResult> {
@@ -1148,7 +1179,7 @@ export class LedgerService {
       transactionId,
       metadata: {
         transactionId,
-        amount,
+        amount: toDecimal(amount).toString(),
         currency,
         type: 'FEE',
       },
@@ -1160,23 +1191,6 @@ export class LedgerService {
   // ============================================
 
   /**
-   * Convert amount to Decimal (Prisma Decimal type)
-   */
-  private static toDecimal(amount: number | string): number {
-    if (typeof amount === 'string') {
-      return parseFloat(amount);
-    }
-    return amount;
-  }
-
-  /**
-   * Convert amount to number for calculations
-   */
-  private static toDecimalNumber(amount: number | string): number {
-    return typeof amount === 'string' ? parseFloat(amount) : amount;
-  }
-
-  /**
    * Update account balances based on journal entries
    */
   private static async updateAccountBalances(journalId: string): Promise<void> {
@@ -1186,76 +1200,55 @@ export class LedgerService {
     });
 
     // Group entries by account
-    const accountUpdates: Record<string, { delta: number; account: Account }> = {};
+    const accountUpdates: Record<string, { delta: Decimal; account: Account }> = {};
 
     for (const entry of entries) {
-      const amount = Number(entry.amount);
-      const delta = entry.entryType === 'DEBIT' ? -amount : amount;
+      const amount = toDecimal(entry.amount);
+      const delta = entry.entryType === 'DEBIT' ? new Decimal(-1).times(amount) : amount;
 
       if (!accountUpdates[entry.accountId]) {
         accountUpdates[entry.accountId] = {
-          delta: 0,
+          delta: new Decimal(0),
           account: entry.account,
         };
       }
 
-      accountUpdates[entry.accountId].delta += delta;
+      accountUpdates[entry.accountId].delta = accountUpdates[entry.accountId].delta.plus(delta);
     }
 
-    // Update each account
-    for (const accountId of Object.keys(accountUpdates)) {
-      const { delta, account } = accountUpdates[accountId];
-      const newBalance = Number(account.balance) + delta;
-      const newAvailableBalance = Number(account.availableBalance) + delta;
-
-      // Check for negative balance
-      if (newBalance < 0 && !LEDGER_CONFIG.ALLOW_NEGATIVE_BALANCES) {
-        throw new InsufficientBalanceError(
-          account.id,
-          Math.abs(delta),
-          Number(account.availableBalance)
-        );
-      }
-
+    // Apply updates to accounts
+    for (const [accountId, update] of Object.entries(accountUpdates)) {
       await prisma.account.update({
         where: { id: accountId },
         data: {
-          balance: newBalance,
-          availableBalance: newAvailableBalance,
+          balance: {
+            increment: update.delta,
+          },
+          availableBalance: {
+            increment: update.delta,
+          },
         },
       });
     }
   }
 
   /**
-   * Verify user has access to a journal
+   * Verify journal access for authorization
    */
   private static async verifyJournalAccess(journal: Journal, actingUserId: string): Promise<void> {
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser) throw new NotFoundError('User', actingUserId);
 
-    // Admins can see everything
-    if (['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role)) {
-      return;
-    }
+    // Check if user has access to any related entity
+    const hasAccess = 
+      journal.transaction?.userId === actingUserId ||
+      journal.transfer?.fromUserId === actingUserId ||
+      journal.deposit?.userId === actingUserId ||
+      journal.withdrawal?.userId === actingUserId ||
+      ['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role);
 
-    // Check if journal belongs to user's transaction/transfer/deposit/withdrawal
-    if (journal.transaction && journal.transaction.userId === actingUserId) {
-      return;
+    if (!hasAccess) {
+      throw new ForbiddenError('You do not have access to this journal');
     }
-
-    if (journal.transfer && (journal.transfer.fromUserId === actingUserId || journal.transfer.toUserId === actingUserId)) {
-      return;
-    }
-
-    if (journal.deposit && journal.deposit.userId === actingUserId) {
-      return;
-    }
-
-    if (journal.withdrawal && journal.withdrawal.userId === actingUserId) {
-      return;
-    }
-
-    throw new ForbiddenError('You do not have access to this journal');
   }
 }
