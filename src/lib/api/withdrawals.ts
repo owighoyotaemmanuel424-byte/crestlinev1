@@ -1,7 +1,7 @@
 // src/lib/api/withdrawals.ts
 // Withdrawal API client
 
-import { apiClient } from './client';
+import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
 
 export interface Withdrawal {
   id: string;
@@ -55,25 +55,6 @@ export interface CreateWithdrawalData {
   idempotencyKey?: string;
 }
 
-// Backend response types
-interface BackendPaginatedResponse<T> {
-  success: boolean;
-  data: T[];
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
-interface BackendSuccessResponse<T> {
-  success: boolean;
-  data: T;
-}
-
 class WithdrawalsApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
@@ -83,15 +64,14 @@ class WithdrawalsApi {
   }
 
   private transformPaginatedResponse<T>(
-    backendResponse: BackendPaginatedResponse<T>,
-    fieldName: string
-  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number } {
+    backendResponse: BackendSuccessResponse<T[]>
+  ): { withdrawals: T[]; total: number; page: number; limit: number; totalPages: number } {
     return {
-      [fieldName]: backendResponse.data,
-      total: backendResponse.meta.total,
-      page: backendResponse.meta.page,
-      limit: backendResponse.meta.limit,
-      totalPages: backendResponse.meta.totalPages,
+      withdrawals: backendResponse.data,
+      total: backendResponse.meta?.total || 0,
+      page: backendResponse.meta?.page || 1,
+      limit: backendResponse.meta?.limit || 20,
+      totalPages: backendResponse.meta?.totalPages || 1,
     };
   }
 
@@ -108,26 +88,38 @@ class WithdrawalsApi {
     if (params.endDate) queryParams.append('endDate', params.endDate);
     
     const endpoint = `/api/withdrawals?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Withdrawal>>(endpoint, token);
-    return this.transformPaginatedResponse<Withdrawal>(backendResponse, 'withdrawals') as WithdrawalListResult;
+    const backendResponse = await apiClient.get<Withdrawal[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Withdrawal>(backendResponse as BackendSuccessResponse<Withdrawal[]>);
   }
 
   async getWithdrawalById(id: string): Promise<Withdrawal> {
     const token = this.getToken();
-    const backendResponse = await apiClient.get<BackendSuccessResponse<Withdrawal>>(`/api/withdrawals/${id}`, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.get<Withdrawal>(`/api/withdrawals/${id}`, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Withdrawal>).data;
   }
 
   async createWithdrawal(data: CreateWithdrawalData): Promise<Withdrawal> {
     const token = this.getToken();
-    const backendResponse = await apiClient.post<BackendSuccessResponse<Withdrawal>>('/api/withdrawals', data, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.post<Withdrawal>('/api/withdrawals', data, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Withdrawal>).data;
   }
 
   async cancelWithdrawal(id: string): Promise<Withdrawal> {
     const token = this.getToken();
-    const backendResponse = await apiClient.patch<BackendSuccessResponse<Withdrawal>>(`/api/withdrawals/${id}/cancel`, {}, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.patch<Withdrawal>(`/api/withdrawals/${id}/cancel`, {}, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Withdrawal>).data;
   }
 
   // Admin methods
@@ -145,8 +137,11 @@ class WithdrawalsApi {
     if (params.endDate) queryParams.append('endDate', params.endDate);
     
     const endpoint = `/api/admin/withdrawals?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Withdrawal>>(endpoint, token);
-    return this.transformPaginatedResponse<Withdrawal>(backendResponse, 'withdrawals') as WithdrawalListResult;
+    const backendResponse = await apiClient.get<Withdrawal[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Withdrawal>(backendResponse as BackendSuccessResponse<Withdrawal[]>);
   }
 }
 
