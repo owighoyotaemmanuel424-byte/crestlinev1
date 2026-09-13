@@ -1,13 +1,11 @@
-// src/lib/api/withdrawals.ts
-// Withdrawal API client
-
 import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 export interface Withdrawal {
   id: string;
   reference: string;
   accountId: string;
-  amount: number;
+  amount: Decimal;
   currency: string;
   method: string;
   destination: string;
@@ -16,8 +14,8 @@ export interface Withdrawal {
   journalId: string;
   userId: string;
   transactionId?: string;
-  fee?: number;
-  totalAmount?: number;
+  fee?: Decimal;
+  totalAmount?: Decimal;
   metadata?: Record<string, any>;
   createdAt: Date;
   completedAt?: Date;
@@ -46,7 +44,7 @@ export interface WithdrawalListResult {
 
 export interface CreateWithdrawalData {
   accountId: string;
-  amount: number;
+  amount: Decimal;
   currency?: string;
   method: string;
   destination: string;
