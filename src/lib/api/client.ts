@@ -1,10 +1,30 @@
 // src/lib/api/client.ts
 // Base HTTP client for Crestline Capital API
 
-interface ApiResponse<T> {
+// Backend response format
+interface BackendSuccessResponse<T> {
+  success: true;
   data: T;
+  meta?: {
+    page?: number;
+    limit?: number;
+    total?: number;
+    totalPages?: number;
+    hasNextPage?: boolean;
+    hasPrevPage?: boolean;
+  };
   message?: string;
 }
+
+interface BackendErrorResponse {
+  success: false;
+  error: string;
+  message?: string;
+  details?: Record<string, any>;
+  statusCode?: number;
+}
+
+type BackendResponse<T> = BackendSuccessResponse<T> | BackendErrorResponse;
 
 interface ApiError {
   error: string;
@@ -60,8 +80,21 @@ class ApiClient {
       throw error;
     }
 
-    const responseData: ApiResponse<T> = await response.json();
-    return responseData.data;
+    const backendResponse: BackendResponse<T> = await response.json();
+    
+    if (!backendResponse.success) {
+      // Handle backend error response
+      const error: ApiError = {
+        error: backendResponse.error,
+        message: backendResponse.message,
+        details: backendResponse.details,
+        statusCode: backendResponse.statusCode || 400,
+      };
+      throw error;
+    }
+    
+    // Return the data field from successful backend response
+    return backendResponse.data;
   }
 
   async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<T> {
@@ -87,4 +120,4 @@ class ApiClient {
 
 const apiClient = new ApiClient();
 
-export { apiClient, ApiClient, ApiResponse, ApiError };
+export { apiClient, ApiClient, ApiError, BackendResponse, BackendSuccessResponse, BackendErrorResponse };
