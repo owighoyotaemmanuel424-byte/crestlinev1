@@ -1,12 +1,27 @@
 import { prisma } from '../prisma';
 import { ForbiddenError, NotFoundError, ValidationError } from '../utils/errors';
 import { generateReference } from '../utils/security';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { LoanApplication, LoanApplicationStatus, User, Account } from '@prisma/client';
+
+/**
+ * Convert amount to Decimal for safe financial arithmetic
+ * Accepts number, string, or Decimal
+ */
+function toDecimal(amount: number | string | Decimal): Decimal {
+  if (amount instanceof Decimal) {
+    return amount;
+  }
+  if (typeof amount === 'string') {
+    return new Decimal(amount);
+  }
+  return new Decimal(amount.toString());
+}
 
 export interface CreateLoanApplicationData {
   userId: string;
   accountId: string;
-  requestedAmount: number;
+  requestedAmount: number | string | Decimal;
   termMonths?: number;
   purpose?: string;
 }
@@ -22,14 +37,18 @@ export class LoanService {
     const account = await prisma.account.findUnique({ where: { id: data.accountId } });
     if (!account) throw new NotFoundError('Account', data.accountId);
     if (account.userId !== data.userId) throw new ForbiddenError('Account does not belong to user');
-    if (data.requestedAmount <= 0) throw new ValidationError('Requested amount must be positive');
+    
+    const requestedAmountDecimal = toDecimal(data.requestedAmount);
+    
+    if (requestedAmountDecimal.lessThanOrEqual(new Decimal(0))) throw new ValidationError('Requested amount must be positive');
+    
     const reference = generateReference('LOAN');
     const loanApplication = await prisma.loanApplication.create({
       data: {
         reference,
         userId: data.userId,
         accountId: data.accountId,
-        requestedAmount: data.requestedAmount,
+        requestedAmount: requestedAmountDecimal,
         termMonths: data.termMonths || 12,
         purpose: data.purpose,
         status: 'DRAFT' as LoanApplicationStatus,
@@ -42,7 +61,7 @@ export class LoanService {
         action: 'CREATE',
         resourceType: 'LOAN_APPLICATION',
         resourceId: loanApplication.id,
-        newValues: { reference, requestedAmount: data.requestedAmount, termMonths: data.termMonths },
+        newValues: { reference, requestedAmount: requestedAmountDecimal.toString(), termMonths: data.termMonths },
         status: 'SUCCESS',
       },
     });
@@ -98,15 +117,18 @@ export class LoanService {
     });
     return { loanApplication: submittedApplication };
   }
-  static async approveLoanApplication(id: string, actingUserId: string, approvedAmount?: number): Promise<LoanApplicationResult> {
+  static async approveLoanApplication(id: string, actingUserId: string, approvedAmount?: number | string | Decimal): Promise<LoanApplicationResult> {
     const loanApplication = await prisma.loanApplication.findUnique({ where: { id } });
     if (!loanApplication) throw new NotFoundError('Loan Application', id);
     if (loanApplication.status !== 'SUBMITTED' && loanApplication.status !== 'UNDER_REVIEW') throw new ValidationError('Only submitted or under review applications can be approved');
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) throw new ForbiddenError('Only administrators or operators can approve loan applications');
+    
+    const approvedAmountDecimal = approvedAmount ? toDecimal(approvedAmount) : toDecimal(loanApplication.requestedAmount);
+    
     const approvedApplication = await prisma.loanApplication.update({
       where: { id },
-      data: { status: 'APPROVED' as LoanApplicationStatus, approvedAmount: approvedAmount || loanApplication.requestedAmount, reviewedById: actingUserId, reviewedAt: new Date() },
+      data: { status: 'APPROVED' as LoanApplicationStatus, approvedAmount: approvedAmountDecimal, reviewedById: actingUserId, reviewedAt: new Date() },
       include: { user: { select: { id: true, email: true, firstName: true, lastName: true } }, account: { select: { id: true, accountNumber: true } } },
     });
     await prisma.auditLog.create({
@@ -116,7 +138,7 @@ export class LoanService {
         resourceType: 'LOAN_APPLICATION',
         resourceId: loanApplication.id,
         oldValues: { status: loanApplication.status },
-        newValues: { status: 'APPROVED', approvedAmount },
+        newValues: { status: 'APPROVED', approvedAmount: approvedAmountDecimal.toString() },
         status: 'SUCCESS',
       },
     });
