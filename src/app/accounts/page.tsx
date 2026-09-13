@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useAccounts } from '@/hooks';
+import { formatCurrency } from '@/lib/utils';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -28,13 +29,6 @@ export default function AccountsPage() {
 
   const handlePageChange = (newPage: number) => {
     refetch({ page: newPage, search, status: statusFilter, accountType: typeFilter });
-  };
-
-  const formatCurrency = (amount: number, currency: string = 'NGN') => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount / 100);
   };
 
   const maskAccountNumber = (accountNumber: string) => {
