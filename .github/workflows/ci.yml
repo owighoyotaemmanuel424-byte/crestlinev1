@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 env:
-  NODE_VERSION: 18
-  PNPM_VERSION: 8
+  NODE_VERSION: 24
+  PNPM_VERSION: 11
 
 jobs:
   test:
@@ -24,14 +24,22 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 24
           cache: 'pnpm'
       
       - name: Install pnpm
-        run: npm install -g pnpm@8
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
       
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      
+      - name: Prisma validate
+        run: pnpm exec prisma validate
+      
+      - name: Prisma generate
+        run: pnpm exec prisma generate
       
       - name: Run linting
         run: pnpm lint
@@ -42,9 +50,11 @@ jobs:
       - name: Run unit tests
         run: pnpm test
         env:
-          DATABASE_URL: test_db_url
-          JWT_SECRET: test_jwt_secret
-          ENCRYPTION_KEY: test_encryption_key
+          NODE_ENV: test
+          DATABASE_URL: file:./dev.db
+          JWT_SECRET: test-secret-key
+          ENCRYPTION_KEY: test-encryption-key
+          NEXT_PUBLIC_PROVIDER_MODE: sandbox
 
   build:
     name: Build Application
@@ -58,14 +68,21 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 24
           cache: 'pnpm'
       
       - name: Install pnpm
-        run: npm install -g pnpm@8
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
       
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      
+      - name: Prisma generate
+        run: pnpm exec prisma generate
+        env:
+          DATABASE_URL: file:./dev.db
       
       - name: Build application
         run: pnpm build
