@@ -59,12 +59,44 @@ export interface UpdateBeneficiaryData {
   notes?: string;
 }
 
+// Backend response types
+interface BackendPaginatedResponse<T> {
+  success: boolean;
+  data: T[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+}
+
+interface BackendSuccessResponse<T> {
+  success: boolean;
+  data: T;
+}
+
 class BeneficiariesApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('token') || null;
     }
     return null;
+  }
+
+  private transformPaginatedResponse<T>(
+    backendResponse: BackendPaginatedResponse<T>,
+    fieldName: string
+  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number } {
+    return {
+      [fieldName]: backendResponse.data,
+      total: backendResponse.meta.total,
+      page: backendResponse.meta.page,
+      limit: backendResponse.meta.limit,
+      totalPages: backendResponse.meta.totalPages,
+    };
   }
 
   async getMyBeneficiaries(params: BeneficiaryListParams = {}): Promise<BeneficiaryListResult> {
@@ -76,27 +108,32 @@ class BeneficiariesApi {
     if (params.isVerified !== undefined) queryParams.append('isVerified', params.isVerified.toString());
     
     const endpoint = `/api/beneficiaries?${queryParams.toString()}`;
-    return apiClient.get<BeneficiaryListResult>(endpoint, token);
+    const backendResponse = await apiClient.get<BackendPaginatedResponse<Beneficiary>>(endpoint, token);
+    return this.transformPaginatedResponse<Beneficiary>(backendResponse, 'beneficiaries') as BeneficiaryListResult;
   }
 
   async getBeneficiaryById(id: string): Promise<Beneficiary> {
     const token = this.getToken();
-    return apiClient.get<Beneficiary>(`/api/beneficiaries/${id}`, token);
+    const backendResponse = await apiClient.get<BackendSuccessResponse<Beneficiary>>(`/api/beneficiaries/${id}`, token);
+    return backendResponse.data;
   }
 
   async createBeneficiary(data: CreateBeneficiaryData): Promise<Beneficiary> {
     const token = this.getToken();
-    return apiClient.post<Beneficiary>('/api/beneficiaries', data, token);
+    const backendResponse = await apiClient.post<BackendSuccessResponse<Beneficiary>>('/api/beneficiaries', data, token);
+    return backendResponse.data;
   }
 
   async updateBeneficiary(id: string, data: UpdateBeneficiaryData): Promise<Beneficiary> {
     const token = this.getToken();
-    return apiClient.patch<Beneficiary>(`/api/beneficiaries/${id}`, data, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<Beneficiary>>(`/api/beneficiaries/${id}`, data, token);
+    return backendResponse.data;
   }
 
   async deleteBeneficiary(id: string): Promise<{ message: string }> {
     const token = this.getToken();
-    return apiClient.delete<{ message: string }>(`/api/beneficiaries/${id}`, token);
+    const backendResponse = await apiClient.delete<BackendSuccessResponse<{ message: string }>>(`/api/beneficiaries/${id}`, token);
+    return backendResponse.data;
   }
 
   // Admin methods
@@ -110,17 +147,20 @@ class BeneficiariesApi {
     if (params.userId) queryParams.append('userId', params.userId);
     
     const endpoint = `/api/admin/beneficiaries?${queryParams.toString()}`;
-    return apiClient.get<BeneficiaryListResult>(endpoint, token);
+    const backendResponse = await apiClient.get<BackendPaginatedResponse<Beneficiary>>(endpoint, token);
+    return this.transformPaginatedResponse<Beneficiary>(backendResponse, 'beneficiaries') as BeneficiaryListResult;
   }
 
   async verifyBeneficiary(id: string): Promise<Beneficiary> {
     const token = this.getToken();
-    return apiClient.patch<Beneficiary>(`/api/admin/beneficiaries/${id}/verify`, {}, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<Beneficiary>>(`/api/admin/beneficiaries/${id}/verify`, {}, token);
+    return backendResponse.data;
   }
 
   async rejectBeneficiary(id: string, reason?: string): Promise<Beneficiary> {
     const token = this.getToken();
-    return apiClient.patch<Beneficiary>(`/api/admin/beneficiaries/${id}/reject`, { reason }, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<Beneficiary>>(`/api/admin/beneficiaries/${id}/reject`, { reason }, token);
+    return backendResponse.data;
   }
 }
 
