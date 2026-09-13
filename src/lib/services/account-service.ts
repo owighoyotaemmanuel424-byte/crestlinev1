@@ -1,14 +1,29 @@
 import { prisma } from '../prisma';
 import { ForbiddenError, NotFoundError, ValidationError } from '../utils/errors';
 import { generateReference, generateIdempotencyKey } from '../utils/security';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { Account, AccountType, AccountStatus, User, Transaction } from '@prisma/client';
+
+/**
+ * Convert amount to Decimal for safe financial arithmetic
+ * Accepts number, string, or Decimal
+ */
+function toDecimal(amount: number | string | Decimal): Decimal {
+  if (amount instanceof Decimal) {
+    return amount;
+  }
+  if (typeof amount === 'string') {
+    return new Decimal(amount);
+  }
+  return new Decimal(amount.toString());
+}
 
 export interface CreateAccountData {
   userId: string;
   name: string;
   accountType: AccountType;
   currency?: string;
-  initialDeposit?: number;
+  initialDeposit?: number | string | Decimal;
 }
 
 export interface UpdateAccountData {
@@ -41,6 +56,7 @@ export class AccountService {
     }
 
     const accountNumber = generateReference('ACC');
+    const initialDepositDecimal = data.initialDeposit ? toDecimal(data.initialDeposit) : new Decimal(0);
 
     const account = await prisma.account.create({
       data: {
@@ -49,14 +65,14 @@ export class AccountService {
         name: data.name,
         accountType: data.accountType,
         currency: data.currency || 'USD',
-        balance: data.initialDeposit || 0,
-        availableBalance: data.initialDeposit || 0,
+        balance: initialDepositDecimal,
+        availableBalance: initialDepositDecimal,
         status: 'ACTIVE' as AccountStatus,
       },
       include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
     });
 
-    if (data.initialDeposit && data.initialDeposit > 0) {
+    if (data.initialDeposit && initialDepositDecimal.greaterThan(0)) {
       const journal = await prisma.journal.create({
         data: {
           reference: generateReference('JNL'),
@@ -70,8 +86,8 @@ export class AccountService {
           journalId: journal.id,
           accountId: account.id,
           entryType: 'CREDIT' as const,
-          amount: data.initialDeposit,
-          balance: data.initialDeposit,
+          amount: initialDepositDecimal,
+          balance: initialDepositDecimal,
           description: 'Initial deposit',
         },
       });
@@ -309,7 +325,7 @@ export class AccountService {
       throw new ValidationError('Account is already closed');
     }
 
-    if (account.balance !== 0) {
+    if (!toDecimal(account.balance).equals(new Decimal(0))) {
       throw new ValidationError('Cannot close account with non-zero balance');
     }
 
