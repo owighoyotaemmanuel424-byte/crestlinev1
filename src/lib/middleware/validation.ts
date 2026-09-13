@@ -1,11 +1,41 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { z, ZodError } from 'zod';
+import { Decimal } from '@prisma/client/runtime/library';
 import { ValidationError } from '../utils/errors';
 
 // ============================================
 // REQUEST VALIDATION MIDDLEWARE
 // ============================================
+
+/**
+ * Custom Zod schema for Decimal that accepts number, string, or Decimal
+ * and converts to Decimal for safe financial arithmetic.
+ * Use this for all monetary field validations.
+ */
+export const zDecimal = z.custom<Decimal>(
+  (val) => {
+    if (val instanceof Decimal) return true;
+    if (typeof val === 'string') {
+      try {
+        new Decimal(val);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    if (typeof val === 'number') return true;
+    return false;
+  },
+  {
+    message: 'Expected a Decimal, number, or string representation of a number',
+  }
+).transform((val) => {
+  if (val instanceof Decimal) return val;
+  if (typeof val === 'string') return new Decimal(val);
+  if (typeof val === 'number') return new Decimal(val.toString());
+  return val;
+});
 
 /**
  * Zod schemas for request validation
@@ -70,7 +100,7 @@ export function validateBody<T>(schema: z.ZodSchema<T>) {
           { status: 400 }
         );
       }
-      
+
       return NextResponse.json(
         { error: 'ValidationError', message: 'Invalid JSON body' },
         { status: 400 }
@@ -116,7 +146,7 @@ export function validateQuery<T>(schema: z.ZodSchema<T>) {
           { status: 400 }
         );
       }
-      
+
       return NextResponse.json(
         { error: 'ValidationError', message: 'Invalid query parameters' },
         { status: 400 }
@@ -155,7 +185,7 @@ export function validateParams<T>(schema: z.ZodSchema<T>) {
           { status: 400 }
         );
       }
-      
+
       return NextResponse.json(
         { error: 'ValidationError', message: 'Invalid path parameters' },
         { status: 400 }
