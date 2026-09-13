@@ -50,7 +50,7 @@ class ApiClient {
     data?: any,
     headers?: Record<string, string>,
     token?: string
-  ): Promise<T> {
+  ): Promise<BackendResponse<T>> {
     const url = this.baseUrl + endpoint;
     
     const config: RequestInit = {
@@ -85,35 +85,35 @@ class ApiClient {
     if (!backendResponse.success) {
       // Handle backend error response
       const error: ApiError = {
-        error: backendResponse.error,
-        message: backendResponse.message,
-        details: backendResponse.details,
-        statusCode: backendResponse.statusCode || 400,
+        error: (backendResponse as BackendErrorResponse).error,
+        message: (backendResponse as BackendErrorResponse).message,
+        details: (backendResponse as BackendErrorResponse).details,
+        statusCode: (backendResponse as BackendErrorResponse).statusCode || 400,
       };
       throw error;
     }
     
-    // Return the data field from successful backend response
-    return backendResponse.data;
+    // Return the full backend response for the caller to handle
+    return backendResponse;
   }
 
-  async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<T> {
+  async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('GET', endpoint, undefined, headers, token);
   }
 
-  async post<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
+  async post<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('POST', endpoint, data, headers, token);
   }
 
-  async put<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
+  async put<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('PUT', endpoint, data, headers, token);
   }
 
-  async patch<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
+  async patch<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('PATCH', endpoint, data, headers, token);
   }
 
-  async delete<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<T> {
+  async delete<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('DELETE', endpoint, undefined, headers, token);
   }
 }
