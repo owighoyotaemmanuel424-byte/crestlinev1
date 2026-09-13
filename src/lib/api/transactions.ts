@@ -1,14 +1,12 @@
-// src/lib/api/transactions.ts
-// Transaction API client
-
 import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 export interface Transaction {
   id: string;
   reference: string;
   type: string;
   description: string;
-  amount: number;
+  amount: Decimal;
   currency: string;
   status: string;
   accountId: string;
@@ -30,8 +28,8 @@ export interface TransactionListParams {
   accountId?: string;
   startDate?: string;
   endDate?: string;
-  minAmount?: number;
-  maxAmount?: number;
+  minAmount?: Decimal;
+  maxAmount?: Decimal;
 }
 
 export interface TransactionListResult {
