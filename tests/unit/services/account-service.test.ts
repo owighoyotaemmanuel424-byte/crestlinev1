@@ -1,5 +1,6 @@
 import { AccountService } from '@/lib/services/account-service';
 import { prisma } from '@/lib/prisma';
+import { Decimal } from '@prisma/client/runtime/library';
 import { mockPrismaFindUnique, mockPrismaFindMany, mockPrismaCreate, mockPrismaUpdate, mockPrismaCount, TEST_DATE } from '../../setup';
 
 // ============================================
@@ -28,8 +29,8 @@ describe('AccountService', () => {
         name: 'Primary Account',
         currency: 'USD',
         accountType: 'SAVINGS',
-        balance: 0,
-        availableBalance: 0,
+        balance: new Decimal(0),
+        availableBalance: new Decimal(0),
         status: 'ACTIVE',
         createdAt: TEST_DATE,
         updatedAt: TEST_DATE,
@@ -83,8 +84,8 @@ describe('AccountService', () => {
         accountNumber: 'ACC-001',
         name: 'Primary Account',
         currency: 'USD',
-        balance: 1000,
-        availableBalance: 1000,
+        balance: new Decimal(1000),
+        availableBalance: new Decimal(1000),
         status: 'ACTIVE',
         user: mockUser,
         transactions: [],
@@ -121,8 +122,8 @@ describe('AccountService', () => {
   describe('listAccounts', () => {
     it('should return paginated list of user accounts', async () => {
       const mockAccounts = [
-        { id: 'account-1', userId: 'user-1', name: 'Account 1', balance: 1000 },
-        { id: 'account-2', userId: 'user-1', name: 'Account 2', balance: 2000 },
+        { id: 'account-1', userId: 'user-1', name: 'Account 1', balance: new Decimal(1000) },
+        { id: 'account-2', userId: 'user-1', name: 'Account 2', balance: new Decimal(2000) },
       ];
       
       mockPrismaFindMany('account', mockAccounts);
@@ -224,8 +225,8 @@ describe('AccountService', () => {
       const mockAccount = {
         id: 'account-1',
         userId: 'user-1',
-        balance: 0,
-        availableBalance: 0,
+        balance: new Decimal(0),
+        availableBalance: new Decimal(0),
         status: 'ACTIVE',
       };
       
@@ -243,8 +244,8 @@ describe('AccountService', () => {
       const mockAccount = {
         id: 'account-1',
         userId: 'user-1',
-        balance: 1000,
-        availableBalance: 1000,
+        balance: new Decimal(1000),
+        availableBalance: new Decimal(1000),
         status: 'ACTIVE',
       };
       
