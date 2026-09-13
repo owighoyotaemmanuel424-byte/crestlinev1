@@ -29,6 +29,25 @@ export interface PasswordUpdateData {
   newPassword: string;
 }
 
+// Backend response types
+interface BackendPaginatedResponse<T> {
+  success: boolean;
+  data: T[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+}
+
+interface BackendSuccessResponse<T> {
+  success: boolean;
+  data: T;
+}
+
 class UsersApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
@@ -37,19 +56,35 @@ class UsersApi {
     return null;
   }
 
+  private transformPaginatedResponse<T>(
+    backendResponse: BackendPaginatedResponse<T>,
+    fieldName: string
+  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number } {
+    return {
+      [fieldName]: backendResponse.data,
+      total: backendResponse.meta.total,
+      page: backendResponse.meta.page,
+      limit: backendResponse.meta.limit,
+      totalPages: backendResponse.meta.totalPages,
+    };
+  }
+
   async getProfile(): Promise<User> {
     const token = this.getToken();
-    return apiClient.get<User>('/api/profile', token);
+    const backendResponse = await apiClient.get<BackendSuccessResponse<User>>('/api/profile', token);
+    return backendResponse.data;
   }
 
   async updateProfile(data: ProfileUpdateData): Promise<User> {
     const token = this.getToken();
-    return apiClient.patch<User>('/api/profile', data, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<User>>('/api/profile', data, token);
+    return backendResponse.data;
   }
 
   async updatePassword(data: PasswordUpdateData): Promise<{ message: string }> {
     const token = this.getToken();
-    return apiClient.patch<{ message: string }>('/api/profile/password', data, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<{ message: string }>>('/api/profile/password', data, token);
+    return backendResponse.data;
   }
 
   // Admin methods
@@ -63,27 +98,32 @@ class UsersApi {
     if (params.status) queryParams.append('status', params.status);
     
     const endpoint = `/api/admin/users?${queryParams.toString()}`;
-    return apiClient.get<{ users: User[]; total: number; page: number; limit: number; totalPages: number }>(endpoint, token);
+    const backendResponse = await apiClient.get<BackendPaginatedResponse<User>>(endpoint, token);
+    return this.transformPaginatedResponse<User>(backendResponse, 'users') as { users: User[]; total: number; page: number; limit: number; totalPages: number };
   }
 
   async getUserById(id: string): Promise<User> {
     const token = this.getToken();
-    return apiClient.get<User>(`/api/admin/users/${id}`, token);
+    const backendResponse = await apiClient.get<BackendSuccessResponse<User>>(`/api/admin/users/${id}`, token);
+    return backendResponse.data;
   }
 
   async updateUser(id: string, data: { firstName?: string; lastName?: string; phone?: string; status?: string; role?: string }): Promise<User> {
     const token = this.getToken();
-    return apiClient.patch<User>(`/api/admin/users/${id}`, data, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<User>>(`/api/admin/users/${id}`, data, token);
+    return backendResponse.data;
   }
 
   async freezeUser(id: string): Promise<User> {
     const token = this.getToken();
-    return apiClient.patch<User>(`/api/admin/users/${id}/freeze`, {}, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<User>>(`/api/admin/users/${id}/freeze`, {}, token);
+    return backendResponse.data;
   }
 
   async unfreezeUser(id: string): Promise<User> {
     const token = this.getToken();
-    return apiClient.patch<User>(`/api/admin/users/${id}/unfreeze`, {}, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<User>>(`/api/admin/users/${id}/unfreeze`, {}, token);
+    return backendResponse.data;
   }
 }
 
