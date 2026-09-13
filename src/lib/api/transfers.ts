@@ -1,7 +1,5 @@
-// src/lib/api/transfers.ts
-// Transfer API client
-
 import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 export interface Transfer {
   id: string;
@@ -11,13 +9,13 @@ export interface Transfer {
   recipientName?: string;
   recipientBank?: string;
   recipientAccountNumber?: string;
-  amount: number;
+  amount: Decimal;
   currency: string;
   description: string;
   status: string;
   type: string;
-  fee?: number;
-  totalAmount?: number;
+  fee?: Decimal;
+  totalAmount?: Decimal;
   journalId: string;
   userId: string;
   createdAt: Date;
