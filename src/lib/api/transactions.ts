@@ -1,7 +1,7 @@
 // src/lib/api/transactions.ts
 // Transaction API client
 
-import { apiClient } from './client';
+import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
 
 export interface Transaction {
   id: string;
@@ -42,25 +42,6 @@ export interface TransactionListResult {
   totalPages: number;
 }
 
-// Backend response types
-interface BackendPaginatedResponse<T> {
-  success: boolean;
-  data: T[];
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
-interface BackendSuccessResponse<T> {
-  success: boolean;
-  data: T;
-}
-
 class TransactionsApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
@@ -70,15 +51,14 @@ class TransactionsApi {
   }
 
   private transformPaginatedResponse<T>(
-    backendResponse: BackendPaginatedResponse<T>,
-    fieldName: string
-  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number } {
+    backendResponse: BackendSuccessResponse<T[]>
+  ): { transactions: T[]; total: number; page: number; limit: number; totalPages: number } {
     return {
-      [fieldName]: backendResponse.data,
-      total: backendResponse.meta.total,
-      page: backendResponse.meta.page,
-      limit: backendResponse.meta.limit,
-      totalPages: backendResponse.meta.totalPages,
+      transactions: backendResponse.data,
+      total: backendResponse.meta?.total || 0,
+      page: backendResponse.meta?.page || 1,
+      limit: backendResponse.meta?.limit || 20,
+      totalPages: backendResponse.meta?.totalPages || 1,
     };
   }
 
@@ -97,14 +77,20 @@ class TransactionsApi {
     if (params.maxAmount) queryParams.append('maxAmount', params.maxAmount.toString());
     
     const endpoint = `/api/transactions?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Transaction>>(endpoint, token);
-    return this.transformPaginatedResponse<Transaction>(backendResponse, 'transactions') as TransactionListResult;
+    const backendResponse = await apiClient.get<Transaction[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Transaction>(backendResponse as BackendSuccessResponse<Transaction[]>);
   }
 
   async getTransactionById(id: string): Promise<Transaction> {
     const token = this.getToken();
-    const backendResponse = await apiClient.get<BackendSuccessResponse<Transaction>>(`/api/transactions/${id}`, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.get<Transaction>(`/api/transactions/${id}`, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Transaction>).data;
   }
 
   // Admin methods
@@ -124,8 +110,11 @@ class TransactionsApi {
     if (params.maxAmount) queryParams.append('maxAmount', params.maxAmount.toString());
     
     const endpoint = `/api/admin/transactions?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Transaction>>(endpoint, token);
-    return this.transformPaginatedResponse<Transaction>(backendResponse, 'transactions') as TransactionListResult;
+    const backendResponse = await apiClient.get<Transaction[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Transaction>(backendResponse as BackendSuccessResponse<Transaction[]>);
   }
 }
 
