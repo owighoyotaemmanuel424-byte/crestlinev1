@@ -63,12 +63,44 @@ export interface CreateTransferData {
   idempotencyKey?: string;
 }
 
+// Backend response types
+interface BackendPaginatedResponse<T> {
+  success: boolean;
+  data: T[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+}
+
+interface BackendSuccessResponse<T> {
+  success: boolean;
+  data: T;
+}
+
 class TransfersApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('token') || null;
     }
     return null;
+  }
+
+  private transformPaginatedResponse<T>(
+    backendResponse: BackendPaginatedResponse<T>,
+    fieldName: string
+  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number } {
+    return {
+      [fieldName]: backendResponse.data,
+      total: backendResponse.meta.total,
+      page: backendResponse.meta.page,
+      limit: backendResponse.meta.limit,
+      totalPages: backendResponse.meta.totalPages,
+    };
   }
 
   async getMyTransfers(params: TransferListParams = {}): Promise<TransferListResult> {
@@ -84,22 +116,26 @@ class TransfersApi {
     if (params.endDate) queryParams.append('endDate', params.endDate);
     
     const endpoint = `/api/transfers?${queryParams.toString()}`;
-    return apiClient.get<TransferListResult>(endpoint, token);
+    const backendResponse = await apiClient.get<BackendPaginatedResponse<Transfer>>(endpoint, token);
+    return this.transformPaginatedResponse<Transfer>(backendResponse, 'transfers') as TransferListResult;
   }
 
   async getTransferById(id: string): Promise<Transfer> {
     const token = this.getToken();
-    return apiClient.get<Transfer>(`/api/transfers/${id}`, token);
+    const backendResponse = await apiClient.get<BackendSuccessResponse<Transfer>>(`/api/transfers/${id}`, token);
+    return backendResponse.data;
   }
 
   async createTransfer(data: CreateTransferData): Promise<Transfer> {
     const token = this.getToken();
-    return apiClient.post<Transfer>('/api/transfers', data, token);
+    const backendResponse = await apiClient.post<BackendSuccessResponse<Transfer>>('/api/transfers', data, token);
+    return backendResponse.data;
   }
 
   async cancelTransfer(id: string): Promise<Transfer> {
     const token = this.getToken();
-    return apiClient.patch<Transfer>(`/api/transfers/${id}/cancel`, {}, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<Transfer>>(`/api/transfers/${id}/cancel`, {}, token);
+    return backendResponse.data;
   }
 
   // Admin methods
@@ -117,17 +153,20 @@ class TransfersApi {
     if (params.endDate) queryParams.append('endDate', params.endDate);
     
     const endpoint = `/api/admin/transfers?${queryParams.toString()}`;
-    return apiClient.get<TransferListResult>(endpoint, token);
+    const backendResponse = await apiClient.get<BackendPaginatedResponse<Transfer>>(endpoint, token);
+    return this.transformPaginatedResponse<Transfer>(backendResponse, 'transfers') as TransferListResult;
   }
 
   async approveTransfer(id: string): Promise<Transfer> {
     const token = this.getToken();
-    return apiClient.patch<Transfer>(`/api/admin/transfers/${id}/approve`, {}, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<Transfer>>(`/api/admin/transfers/${id}/approve`, {}, token);
+    return backendResponse.data;
   }
 
   async rejectTransfer(id: string, reason?: string): Promise<Transfer> {
     const token = this.getToken();
-    return apiClient.patch<Transfer>(`/api/admin/transfers/${id}/reject`, { reason }, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<Transfer>>(`/api/admin/transfers/${id}/reject`, { reason }, token);
+    return backendResponse.data;
   }
 }
 
