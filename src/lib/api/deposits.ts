@@ -1,13 +1,11 @@
-// src/lib/api/deposits.ts
-// Deposit API client
-
 import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
+import { Decimal } from '@prisma/client/runtime/library';
 
 export interface Deposit {
   id: string;
   reference: string;
   accountId: string;
-  amount: number;
+  amount: Decimal;
   currency: string;
   method: string;
   status: string;
@@ -43,7 +41,7 @@ export interface DepositListResult {
 
 export interface CreateDepositData {
   accountId: string;
-  amount: number;
+  amount: Decimal;
   currency?: string;
   method: string;
   description?: string;
