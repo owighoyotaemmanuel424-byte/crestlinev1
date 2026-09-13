@@ -7,6 +7,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTransactions } from '@/hooks';
+import { formatCurrency } from '@/lib/utils';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,13 +36,6 @@ export default function TransactionsPage() {
     startDate,
     endDate,
   });
-
-  const formatCurrency = (amount: number, currency: string = 'NGN') => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount / 100);
-  };
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status.toLowerCase()) {
