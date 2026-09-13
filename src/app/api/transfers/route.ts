@@ -5,38 +5,7 @@ import { TransferService } from '@/lib/services/transfer-service';
 import { success, paginated } from '@/lib/middleware/response';
 import { handleRouteError } from '@/lib/middleware/error-handler';
 import { getAuthUser } from '@/lib/middleware/auth';
-
-// ============================================
-// DECIMAL UTILITIES FOR ZOD
-// ============================================
-
-/**
- * Custom Zod schema for Decimal that accepts number, string, or Decimal
- * and converts to Decimal for safe financial arithmetic
- */
-const zDecimal = z.custom<Decimal>(
-  (val) => {
-    if (val instanceof Decimal) return true;
-    if (typeof val === 'string') {
-      try {
-        new Decimal(val);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    if (typeof val === 'number') return true;
-    return false;
-  },
-  {
-    message: 'Expected a Decimal, number, or string representation of a number',
-  }
-).transform((val) => {
-  if (val instanceof Decimal) return val;
-  if (typeof val === 'string') return new Decimal(val);
-  if (typeof val === 'number') return new Decimal(val.toString());
-  return val;
-});
+import { zDecimal } from '@/lib/middleware/validation';
 
 // ============================================
 // GET /api/transfers
