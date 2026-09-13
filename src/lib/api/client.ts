@@ -2,7 +2,7 @@
 // Base HTTP client for Crestline Capital API
 
 // Backend response format: { success: true, data: T, meta?: {...} } or { success: false, error: string, ... }
-interface BackendSuccessResponse<T> {
+export interface BackendSuccessResponse<T> {
   success: true;
   data: T;
   meta?: {
@@ -16,7 +16,7 @@ interface BackendSuccessResponse<T> {
   message?: string;
 }
 
-interface BackendErrorResponse {
+export interface BackendErrorResponse {
   success: false;
   error: string;
   message?: string;
@@ -24,7 +24,7 @@ interface BackendErrorResponse {
   statusCode?: number;
 }
 
-type BackendResponse<T> = BackendSuccessResponse<T> | BackendErrorResponse;
+export type BackendResponse<T> = BackendSuccessResponse<T> | BackendErrorResponse;
 
 interface ApiError {
   error: string;
@@ -50,7 +50,7 @@ class ApiClient {
     data?: any,
     headers?: Record<string, string>,
     token?: string
-  ): Promise<T> {
+  ): Promise<BackendResponse<T>> {
     const url = this.baseUrl + endpoint;
     
     const config: RequestInit = {
@@ -80,46 +80,30 @@ class ApiClient {
       throw error;
     }
 
-    const backendResponse: BackendResponse<T> = await response.json();
-    
-    if (!backendResponse.success) {
-      // Handle backend error response
-      const error: ApiError = {
-        error: (backendResponse as BackendErrorResponse).error,
-        message: (backendResponse as BackendErrorResponse).message,
-        details: (backendResponse as BackendErrorResponse).details,
-        statusCode: (backendResponse as BackendErrorResponse).statusCode || 400,
-      };
-      throw error;
-    }
-    
-    // Return the data field from successful backend response
-    // For paginated responses, this will be the array (T[])
-    // For single item responses, this will be the item (T)
-    return backendResponse.data;
+    return await response.json();
   }
 
-  async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<T> {
+  async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('GET', endpoint, undefined, headers, token);
   }
 
-  async post<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
+  async post<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('POST', endpoint, data, headers, token);
   }
 
-  async put<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
+  async put<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('PUT', endpoint, data, headers, token);
   }
 
-  async patch<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
+  async patch<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('PATCH', endpoint, data, headers, token);
   }
 
-  async delete<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<T> {
+  async delete<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('DELETE', endpoint, undefined, headers, token);
   }
 }
 
 const apiClient = new ApiClient();
 
-export { apiClient, ApiClient, ApiError, BackendResponse, BackendSuccessResponse, BackendErrorResponse };
+export { apiClient, ApiClient, ApiError };
