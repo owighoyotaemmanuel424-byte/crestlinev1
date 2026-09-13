@@ -1,7 +1,7 @@
 // src/lib/api/index.ts
 // API Client Index - Export all API modules
 
-export { apiClient, ApiClient, ApiResponse, ApiError } from './client';
+export { apiClient, ApiClient, ApiError, BackendResponse, BackendSuccessResponse, BackendErrorResponse } from './client';
 export { accountsApi } from './accounts';
 export { transactionsApi } from './transactions';
 export { transfersApi } from './transfers';
