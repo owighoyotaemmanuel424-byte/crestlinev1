@@ -1,7 +1,7 @@
 // src/lib/api/accounts.ts
 // Account API client
 
-import { apiClient, BackendResponse, BackendSuccessResponse, BackendErrorResponse } from './client';
+import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
 
 // Types matching Prisma models
 export interface Account {
@@ -62,11 +62,10 @@ class AccountsApi {
   }
 
   private transformPaginatedResponse<T>(
-    backendResponse: BackendSuccessResponse<T[]>, // Backend returns data as array for paginated
-    fieldName: string
-  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number } {
+    backendResponse: BackendSuccessResponse<T[]>
+  ): { accounts: T[]; total: number; page: number; limit: number; totalPages: number } {
     return {
-      [fieldName]: backendResponse.data,
+      accounts: backendResponse.data,
       total: backendResponse.meta?.total || 0,
       page: backendResponse.meta?.page || 1,
       limit: backendResponse.meta?.limit || 20,
@@ -85,48 +84,72 @@ class AccountsApi {
     
     const endpoint = '/api/accounts?' + queryParams.toString();
     const backendResponse = await apiClient.get<Account[]>(endpoint, token);
-    return this.transformPaginatedResponse<Account>(backendResponse as BackendSuccessResponse<Account[]>, 'accounts') as AccountListResult;
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Account>(backendResponse as BackendSuccessResponse<Account[]>);
   }
 
   async getAccountById(id: string): Promise<Account> {
     const token = this.getToken();
     const backendResponse = await apiClient.get<Account>('/api/accounts/' + id, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
     return (backendResponse as BackendSuccessResponse<Account>).data;
   }
 
   async createAccount(data: CreateAccountData): Promise<Account> {
     const token = this.getToken();
     const backendResponse = await apiClient.post<Account>('/api/accounts', data, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
     return (backendResponse as BackendSuccessResponse<Account>).data;
   }
 
   async updateAccount(id: string, data: UpdateAccountData): Promise<Account> {
     const token = this.getToken();
     const backendResponse = await apiClient.patch<Account>('/api/accounts/' + id, data, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
     return (backendResponse as BackendSuccessResponse<Account>).data;
   }
 
   async freezeAccount(id: string): Promise<Account> {
     const token = this.getToken();
     const backendResponse = await apiClient.patch<Account>('/api/accounts/' + id + '/freeze', {}, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
     return (backendResponse as BackendSuccessResponse<Account>).data;
   }
 
   async unfreezeAccount(id: string): Promise<Account> {
     const token = this.getToken();
     const backendResponse = await apiClient.patch<Account>('/api/accounts/' + id + '/unfreeze', {}, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
     return (backendResponse as BackendSuccessResponse<Account>).data;
   }
 
   async closeAccount(id: string): Promise<Account> {
     const token = this.getToken();
     const backendResponse = await apiClient.patch<Account>('/api/accounts/' + id + '/close', {}, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
     return (backendResponse as BackendSuccessResponse<Account>).data;
   }
 
   async getAccountBalance(id: string): Promise<{ balance: number; availableBalance: number }> {
     const token = this.getToken();
     const backendResponse = await apiClient.get<{ balance: number; availableBalance: number }>('/api/accounts/' + id + '/balance', token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
     return (backendResponse as BackendSuccessResponse<{ balance: number; availableBalance: number }>).data;
   }
 
@@ -137,6 +160,9 @@ class AccountsApi {
     if (endDate) queryParams.append('endDate', endDate);
     const endpoint = '/api/accounts/' + id + '/statement?' + queryParams.toString();
     const backendResponse = await apiClient.get<any>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
     return (backendResponse as BackendSuccessResponse<any>).data;
   }
 
@@ -153,7 +179,10 @@ class AccountsApi {
     
     const endpoint = '/api/admin/accounts?' + queryParams.toString();
     const backendResponse = await apiClient.get<Account[]>(endpoint, token);
-    return this.transformPaginatedResponse<Account>(backendResponse as BackendSuccessResponse<Account[]>, 'accounts') as AccountListResult;
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Account>(backendResponse as BackendSuccessResponse<Account[]>);
   }
 }
 
