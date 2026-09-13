@@ -1,7 +1,7 @@
 // src/lib/api/client.ts
 // Base HTTP client for Crestline Capital API
 
-// Backend response format
+// Backend response format: { success: true, data: T, meta?: {...} } or { success: false, error: string, ... }
 interface BackendSuccessResponse<T> {
   success: true;
   data: T;
@@ -50,7 +50,7 @@ class ApiClient {
     data?: any,
     headers?: Record<string, string>,
     token?: string
-  ): Promise<BackendResponse<T>> {
+  ): Promise<T> {
     const url = this.baseUrl + endpoint;
     
     const config: RequestInit = {
@@ -93,27 +93,29 @@ class ApiClient {
       throw error;
     }
     
-    // Return the full backend response for the caller to handle
-    return backendResponse;
+    // Return the data field from successful backend response
+    // For paginated responses, this will be the array (T[])
+    // For single item responses, this will be the item (T)
+    return backendResponse.data;
   }
 
-  async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<T> {
     return this.request<T>('GET', endpoint, undefined, headers, token);
   }
 
-  async post<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async post<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
     return this.request<T>('POST', endpoint, data, headers, token);
   }
 
-  async put<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async put<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
     return this.request<T>('PUT', endpoint, data, headers, token);
   }
 
-  async patch<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async patch<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<T> {
     return this.request<T>('PATCH', endpoint, data, headers, token);
   }
 
-  async delete<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async delete<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<T> {
     return this.request<T>('DELETE', endpoint, undefined, headers, token);
   }
 }
