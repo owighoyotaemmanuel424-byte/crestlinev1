@@ -1,9 +1,42 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Decimal } from '@prisma/client/runtime/library';
 import { TransactionService } from '@/lib/services/transaction-service';
 import { success, paginated } from '@/lib/middleware/response';
 import { handleRouteError } from '@/lib/middleware/error-handler';
 import { getAuthUser } from '@/lib/middleware/auth';
+
+// ============================================
+// DECIMAL UTILITIES FOR ZOD
+// ============================================
+
+/**
+ * Custom Zod schema for Decimal that accepts number, string, or Decimal
+ * and converts to Decimal for safe financial arithmetic
+ */
+const zDecimal = z.custom<Decimal>(
+  (val) => {
+    if (val instanceof Decimal) return true;
+    if (typeof val === 'string') {
+      try {
+        new Decimal(val);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    if (typeof val === 'number') return true;
+    return false;
+  },
+  {
+    message: 'Expected a Decimal, number, or string representation of a number',
+  }
+).transform((val) => {
+  if (val instanceof Decimal) return val;
+  if (typeof val === 'string') return new Decimal(val);
+  if (typeof val === 'number') return new Decimal(val.toString());
+  return val;
+});
 
 // ============================================
 // GET /api/transactions
@@ -43,7 +76,7 @@ export async function GET(request: Request) {
 const createTransactionSchema = z.object({
   accountId: z.string().uuid(),
   type: z.enum(['DEPOSIT', 'WITHDRAWAL', 'TRANSFER_IN', 'TRANSFER_OUT', 'FEE', 'INTEREST', 'LOAN_DISBURSEMENT', 'LOAN_REPAYMENT']),
-  amount: z.number().positive(),
+  amount: zDecimal,
   currency: z.string().length(3),
   description: z.string().min(1),
   reference: z.string().optional(),
