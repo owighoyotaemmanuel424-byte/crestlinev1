@@ -1,9 +1,42 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { Decimal } from '@prisma/client/runtime/library';
 import { LoanService } from '@/lib/services/loan-service';
 import { success, paginated } from '@/lib/middleware/response';
 import { handleRouteError } from '@/lib/middleware/error-handler';
 import { getAuthUser } from '@/lib/middleware/auth';
+
+// ============================================
+// DECIMAL UTILITIES FOR ZOD
+// ============================================
+
+/**
+ * Custom Zod schema for Decimal that accepts number, string, or Decimal
+ * and converts to Decimal for safe financial arithmetic
+ */
+const zDecimal = z.custom<Decimal>(
+  (val) => {
+    if (val instanceof Decimal) return true;
+    if (typeof val === 'string') {
+      try {
+        new Decimal(val);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    if (typeof val === 'number') return true;
+    return false;
+  },
+  {
+    message: 'Expected a Decimal, number, or string representation of a number',
+  }
+).transform((val) => {
+  if (val instanceof Decimal) return val;
+  if (typeof val === 'string') return new Decimal(val);
+  if (typeof val === 'number') return new Decimal(val.toString());
+  return val;
+});
 
 // GET /api/loans - List user loans
 export async function GET(request: Request) {
@@ -21,7 +54,7 @@ export async function GET(request: Request) {
 
 // POST /api/loans - Apply for a loan
 const applyLoanSchema = z.object({
-  amount: z.number().positive(),
+  amount: zDecimal,
   currency: z.string().length(3),
   purpose: z.string().min(1),
   termMonths: z.number().int().positive().max(60),
@@ -35,13 +68,14 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validated = applyLoanSchema.parse(body);
     
-    const result = await LoanService.applyForLoan({
+    const result = await LoanService.createLoan({
       userId: user.id,
+      accountId: user.id,
+      loanType: 'PERSONAL',
       amount: validated.amount,
       currency: validated.currency,
-      purpose: validated.purpose,
-      termMonths: validated.termMonths,
-      collateral: validated.collateral,
+      durationDays: validated.termMonths * 30,
+      description: validated.purpose,
       metadata: validated.metadata,
     }, user.id);
     
