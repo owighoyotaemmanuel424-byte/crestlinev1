@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAccounts, useBeneficiaries, useTransfers, useToast } from '@/hooks';
+import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
@@ -58,7 +59,7 @@ export default function TransferPage() {
     setIsSubmitting(true);
     setShowConfirm(false);
     try {
-      if (senderAccount && formData.amount > senderAccount.availableBalance) {
+      if (senderAccount && formData.amount * 100 > senderAccount.availableBalance.toNumber()) {
         showError('Insufficient balance');
         setIsSubmitting(false);
         return;
@@ -82,10 +83,6 @@ export default function TransferPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN' }).format(amount);
   };
 
   if (step === 4) {
@@ -211,7 +208,7 @@ export default function TransferPage() {
                 onChange={(e) => setFormData(p => ({ ...p, description: e.target.value }))}
                 placeholder="Description (Optional)"
               />
-              {senderAccount && formData.amount > senderAccount.availableBalance && (
+              {senderAccount && formData.amount * 100 > senderAccount.availableBalance.toNumber() && (
                 <p className="text-red-500 text-sm">Insufficient balance</p>
               )}
               
