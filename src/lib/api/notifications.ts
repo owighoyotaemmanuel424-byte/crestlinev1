@@ -1,7 +1,7 @@
 // src/lib/api/notifications.ts
 // Notification API client
 
-import { apiClient } from './client';
+import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
 
 export interface Notification {
   id: string;
@@ -33,25 +33,6 @@ export interface NotificationListResult {
   unreadCount: number;
 }
 
-// Backend response types
-interface BackendPaginatedResponse<T> {
-  success: boolean;
-  data: T[];
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
-interface BackendSuccessResponse<T> {
-  success: boolean;
-  data: T;
-}
-
 class NotificationsApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
@@ -61,18 +42,16 @@ class NotificationsApi {
   }
 
   private transformPaginatedResponse<T>(
-    backendResponse: BackendPaginatedResponse<T>,
-    fieldName: string
-  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number; unreadCount?: number } {
-    const base = {
-      [fieldName]: backendResponse.data,
-      total: backendResponse.meta.total,
-      page: backendResponse.meta.page,
-      limit: backendResponse.meta.limit,
-      totalPages: backendResponse.meta.totalPages,
+    backendResponse: BackendSuccessResponse<T[]>
+  ): { notifications: T[]; total: number; page: number; limit: number; totalPages: number; unreadCount: number } {
+    return {
+      notifications: backendResponse.data,
+      total: backendResponse.meta?.total || 0,
+      page: backendResponse.meta?.page || 1,
+      limit: backendResponse.meta?.limit || 20,
+      totalPages: backendResponse.meta?.totalPages || 1,
+      unreadCount: 0, // TODO: Fetch unread count separately or include in backend response
     };
-    // Add unreadCount if present in response
-    return base as any;
   }
 
   async getMyNotifications(params: NotificationListParams = {}): Promise<NotificationListResult> {
@@ -85,34 +64,47 @@ class NotificationsApi {
     if (params.category) queryParams.append('category', params.category);
     
     const endpoint = `/api/notifications?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Notification>>(endpoint, token);
-    const result = this.transformPaginatedResponse<Notification>(backendResponse, 'notifications') as NotificationListResult;
-    // TODO: unreadCount needs to be fetched separately or included in backend response
-    return { ...result, unreadCount: 0 };
+    const backendResponse = await apiClient.get<Notification[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Notification>(backendResponse as BackendSuccessResponse<Notification[]>);
   }
 
   async getNotificationById(id: string): Promise<Notification> {
     const token = this.getToken();
-    const backendResponse = await apiClient.get<BackendSuccessResponse<Notification>>(`/api/notifications/${id}`, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.get<Notification>(`/api/notifications/${id}`, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Notification>).data;
   }
 
   async markAsRead(id: string): Promise<Notification> {
     const token = this.getToken();
-    const backendResponse = await apiClient.patch<BackendSuccessResponse<Notification>>(`/api/notifications/${id}/read`, {}, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.patch<Notification>(`/api/notifications/${id}/read`, {}, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Notification>).data;
   }
 
   async markAllAsRead(): Promise<{ count: number }> {
     const token = this.getToken();
-    const backendResponse = await apiClient.patch<BackendSuccessResponse<{ count: number }>>('/api/notifications/read-all', {}, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.patch<{ count: number }>('/api/notifications/read-all', {}, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<{ count: number }>).data;
   }
 
   async deleteNotification(id: string): Promise<{ message: string }> {
     const token = this.getToken();
-    const backendResponse = await apiClient.delete<BackendSuccessResponse<{ message: string }>>(`/api/notifications/${id}`, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.delete<{ message: string }>(`/api/notifications/${id}`, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<{ message: string }>).data;
   }
 
   // Admin methods
@@ -127,15 +119,20 @@ class NotificationsApi {
     if (params.userId) queryParams.append('userId', params.userId);
     
     const endpoint = `/api/admin/notifications?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Notification>>(endpoint, token);
-    const result = this.transformPaginatedResponse<Notification>(backendResponse, 'notifications') as NotificationListResult;
-    return { ...result, unreadCount: 0 };
+    const backendResponse = await apiClient.get<Notification[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Notification>(backendResponse as BackendSuccessResponse<Notification[]>);
   }
 
   async createNotification(data: { userId: string; title: string; message: string; type: string; category: string; metadata?: Record<string, any> }): Promise<Notification> {
     const token = this.getToken();
-    const backendResponse = await apiClient.post<BackendSuccessResponse<Notification>>('/api/admin/notifications', data, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.post<Notification>('/api/admin/notifications', data, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Notification>).data;
   }
 }
 
