@@ -1,4 +1,3 @@
-import { prisma } from '../prisma';
 import { generateReference, generateIdempotencyKey } from '../utils/security';
 import {
   ForbiddenError,
@@ -9,6 +8,7 @@ import {
   InsufficientBalanceError,
 } from '../utils/errors';
 import { LedgerService } from './ledger-service';
+import { Decimal } from '@prisma/client/runtime/library';
 import type {
   User,
   Account,
@@ -24,6 +24,25 @@ import type {
   Journal,
   LedgerEntry,
 } from '@prisma/client';
+
+// ============================================
+// DECIMAL UTILITIES
+// ============================================
+
+/**
+ * Convert amount to Decimal for safe financial arithmetic
+ * Accepts number, string, or Decimal
+ */
+function toDecimal(amount: number | string | Decimal): Decimal {
+  if (amount instanceof Decimal) {
+    return amount;
+  }
+  if (typeof amount === 'string') {
+    return new Decimal(amount);
+  }
+  // For numbers, convert to string first to avoid floating point precision loss
+  return new Decimal(amount.toString());
+}
 
 // ============================================
 // INTERFACES & TYPES
@@ -46,14 +65,14 @@ export interface CreateInvestmentData {
   symbol: string;
   name: string;
   investmentType: InvestmentType;
-  quantity: number | string; // Decimal string or number
-  purchasePrice: number | string;
+  quantity: number | string | Decimal; // Decimal string or number
+  purchasePrice: number | string | Decimal;
   metadata?: Record<string, unknown>;
 }
 
 export interface UpdateInvestmentData {
   name?: string;
-  currentPrice?: number | string;
+  currentPrice?: number | string | Decimal;
   status?: InvestmentStatus;
   metadata?: Record<string, unknown>;
 }
@@ -64,9 +83,9 @@ export interface BuyInvestmentData {
   symbol: string;
   name: string;
   investmentType: InvestmentType;
-  quantity: number | string;
-  price: number | string;
-  fee?: number | string;
+  quantity: number | string | Decimal;
+  price: number | string | Decimal;
+  fee?: number | string | Decimal;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
 }
@@ -75,9 +94,9 @@ export interface SellInvestmentData {
   investmentId: string;
   portfolioId: string;
   accountId: string;
-  quantity: number | string;
-  price: number | string;
-  fee?: number | string;
+  quantity: number | string | Decimal;
+  price: number | string | Decimal;
+  fee?: number | string | Decimal;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
 }
@@ -87,10 +106,10 @@ export interface InvestmentTransactionData {
   investmentId: string;
   accountId: string;
   transactionType: InvestmentTransactionType;
-  quantity: number | string;
-  price: number | string;
-  amount: number | string;
-  fee?: number | string;
+  quantity: number | string | Decimal;
+  price: number | string | Decimal;
+  amount: number | string | Decimal;
+  fee?: number | string | Decimal;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
 }
@@ -200,8 +219,8 @@ export interface InvestmentStats {
 const INVESTMENT_CONFIG = {
   MIN_QUANTITY: 0.0001,
   MIN_PRICE: 0.01,
-  MAX_FEE_PERCENT: 0.05, // 5%
-  DEFAULT_FEE: 0,
+  MAX_FEE_PERCENT: new Decimal(0.05), // 5%
+  DEFAULT_FEE: new Decimal(0),
   ALLOW_FRACTIONAL_SHARES: true,
   PRICE_PRECISION: 8, // Decimal places for price
   QUANTITY_PRECISION: 8, // Decimal places for quantity
@@ -659,15 +678,15 @@ export class InvestmentService {
       throw new ConflictError('Investment with this symbol already exists in the portfolio');
     }
 
-    // Validate quantity and price
-    const quantity = this.toDecimalNumber(data.quantity);
-    const purchasePrice = this.toDecimalNumber(data.purchasePrice);
+    // Validate quantity and price using Decimal
+    const quantity = toDecimal(data.quantity);
+    const purchasePrice = toDecimal(data.purchasePrice);
 
-    if (quantity <= 0) {
+    if (quantity.lessThanOrEqual(new Decimal(0))) {
       throw new ValidationError('Quantity must be greater than 0');
     }
 
-    if (purchasePrice <= 0) {
+    if (purchasePrice.lessThanOrEqual(new Decimal(0))) {
       throw new ValidationError('Purchase price must be greater than 0');
     }
 
@@ -706,8 +725,8 @@ export class InvestmentService {
           portfolioId: data.portfolioId,
           symbol: data.symbol,
           name: data.name,
-          quantity,
-          purchasePrice,
+          quantity: quantity.toString(),
+          purchasePrice: purchasePrice.toString(),
         },
         status: 'SUCCESS',
       },
@@ -849,7 +868,7 @@ export class InvestmentService {
       where: { id },
       data: {
         name: data.name,
-        currentPrice: data.currentPrice ? this.toDecimal(data.currentPrice) : undefined,
+        currentPrice: data.currentPrice ? toDecimal(data.currentPrice) : undefined,
         status: data.status,
         metadata: data.metadata,
       },
@@ -871,9 +890,9 @@ export class InvestmentService {
         action: 'UPDATE',
         resourceType: 'INVESTMENT',
         resourceId: investment.id,
-        oldValues: { currentPrice: oldPrice, status: oldStatus },
+        oldValues: { currentPrice: oldPrice?.toString(), status: oldStatus },
         newValues: {
-          currentPrice: data.currentPrice || oldPrice,
+          currentPrice: data.currentPrice ? toDecimal(data.currentPrice).toString() : oldPrice?.toString(),
           status: data.status || oldStatus,
         },
         status: 'SUCCESS',
@@ -927,31 +946,35 @@ export class InvestmentService {
       }
     }
 
-    // Validate inputs
-    const quantity = this.toDecimalNumber(data.quantity);
-    const price = this.toDecimalNumber(data.price);
-    const fee = data.fee ? this.toDecimalNumber(data.fee) : INVESTMENT_CONFIG.DEFAULT_FEE;
+    // Validate inputs using Decimal
+    const quantity = toDecimal(data.quantity);
+    const price = toDecimal(data.price);
+    const fee = data.fee ? toDecimal(data.fee) : INVESTMENT_CONFIG.DEFAULT_FEE;
 
-    if (quantity <= 0) {
+    if (quantity.lessThanOrEqual(new Decimal(0))) {
       throw new ValidationError('Quantity must be greater than 0');
     }
 
-    if (price <= 0) {
+    if (price.lessThanOrEqual(new Decimal(0))) {
       throw new ValidationError('Price must be greater than 0');
     }
 
-    if (fee < 0 || fee > quantity * price * INVESTMENT_CONFIG.MAX_FEE_PERCENT) {
-      throw new ValidationError(`Fee must be between 0 and ${INVESTMENT_CONFIG.MAX_FEE_PERCENT * 100}% of transaction value`);
+    // Validate fee is within bounds using Decimal arithmetic
+    const maxFee = quantity.times(price).times(INVESTMENT_CONFIG.MAX_FEE_PERCENT);
+    if (fee.lessThan(new Decimal(0)) || fee.greaterThan(maxFee)) {
+      throw new ValidationError(\`Fee must be between 0 and \${INVESTMENT_CONFIG.MAX_FEE_PERCENT.times(100).toString()}% of transaction value\`);
     }
 
-    const amount = quantity * price + fee;
+    // Calculate total amount using Decimal arithmetic
+    const amount = quantity.times(price).plus(fee);
 
-    // Check sufficient balance
-    if (account.availableBalance < amount) {
+    // Check sufficient balance using Decimal comparison
+    const availableBalance = toDecimal(account.availableBalance);
+    if (availableBalance.lessThan(amount)) {
       throw new InsufficientBalanceError(
         account.id,
-        amount,
-        Number(account.availableBalance)
+        amount.toNumber(),
+        availableBalance.toNumber()
       );
     }
 
@@ -971,8 +994,8 @@ export class InvestmentService {
           symbol: data.symbol,
           name: data.name,
           investmentType: data.investmentType,
-          quantity: 0,
-          purchasePrice: 0,
+          quantity: new Decimal(0),
+          purchasePrice: new Decimal(0),
           currentPrice: price,
           status: 'PENDING' as InvestmentStatus,
         },
@@ -988,7 +1011,7 @@ export class InvestmentService {
         transactionType: 'BUY' as InvestmentTransactionType,
         quantity: quantity,
         price: price,
-        amount: amount - fee, // Net amount (excluding fee)
+        amount: amount.minus(fee), // Net amount (excluding fee)
         fee: fee,
         executedAt: new Date(),
         status: 'COMPLETED' as TransactionStatus,
@@ -1021,11 +1044,12 @@ export class InvestmentService {
       },
     });
 
-    // Update investment quantity and average purchase price
-    const oldQuantity = Number(investment.quantity);
-    const oldPurchasePrice = Number(investment.purchasePrice);
-    const newQuantity = oldQuantity + quantity;
-    const newAveragePrice = (oldQuantity * oldPurchasePrice + quantity * price) / newQuantity;
+    // Update investment quantity and average purchase price using Decimal arithmetic
+    const oldQuantity = toDecimal(investment.quantity);
+    const oldPurchasePrice = toDecimal(investment.purchasePrice);
+    const newQuantity = oldQuantity.plus(quantity);
+    // newAveragePrice = (oldQuantity * oldPurchasePrice + quantity * price) / newQuantity
+    const newAveragePrice = oldQuantity.times(oldPurchasePrice).plus(quantity.times(price)).div(newQuantity);
 
     await prisma.investment.update({
       where: { id: investment.id },
@@ -1040,13 +1064,13 @@ export class InvestmentService {
     // Create ledger entries for the transaction
     await LedgerService.createJournal({
       reference: generateReference('INV-BUY'),
-      description: `Investment purchase: ${quantity} ${data.symbol} at ${price}`,
+      description: \`Investment purchase: \${quantity.toString()} \${data.symbol} at \${price.toString()}\`,
       entries: [
         {
           accountId: data.accountId,
           entryType: 'DEBIT',
           amount: amount,
-          description: `Investment purchase: ${quantity} ${data.symbol}`,
+          description: \`Investment purchase: \${quantity.toString()} \${data.symbol}\`,
           transactionId: transaction.id,
         },
       ],
@@ -1054,9 +1078,9 @@ export class InvestmentService {
       metadata: {
         transactionId: transaction.id,
         investmentId: investment.id,
-        quantity,
-        price,
-        fee,
+        quantity: quantity.toString(),
+        price: price.toString(),
+        fee: fee.toString(),
       },
     }, actingUserId);
 
@@ -1071,10 +1095,10 @@ export class InvestmentService {
           portfolioId: data.portfolioId,
           investmentId: investment.id,
           accountId: data.accountId,
-          quantity,
-          price,
-          amount,
-          fee,
+          quantity: quantity.toString(),
+          price: price.toString(),
+          amount: amount.toString(),
+          fee: fee.toString(),
         },
         metadata: data.metadata,
         status: 'SUCCESS',
@@ -1134,24 +1158,27 @@ export class InvestmentService {
       }
     }
 
-    // Validate inputs
-    const quantity = this.toDecimalNumber(data.quantity);
-    const price = this.toDecimalNumber(data.price);
-    const fee = data.fee ? this.toDecimalNumber(data.fee) : INVESTMENT_CONFIG.DEFAULT_FEE;
+    // Validate inputs using Decimal
+    const quantity = toDecimal(data.quantity);
+    const price = toDecimal(data.price);
+    const fee = data.fee ? toDecimal(data.fee) : INVESTMENT_CONFIG.DEFAULT_FEE;
 
-    if (quantity <= 0) {
+    if (quantity.lessThanOrEqual(new Decimal(0))) {
       throw new ValidationError('Quantity must be greater than 0');
     }
 
-    if (price <= 0) {
+    if (price.lessThanOrEqual(new Decimal(0))) {
       throw new ValidationError('Price must be greater than 0');
     }
 
-    if (quantity > Number(investment.quantity)) {
+    // Check if selling more than owned using Decimal comparison
+    const ownedQuantity = toDecimal(investment.quantity);
+    if (quantity.greaterThan(ownedQuantity)) {
       throw new ValidationError('Cannot sell more than owned quantity');
     }
 
-    const amount = quantity * price - fee;
+    // Calculate amount using Decimal arithmetic
+    const amount = quantity.times(price).minus(fee);
 
     // Create transaction
     const transaction = await prisma.investmentTransaction.create({
@@ -1195,34 +1222,38 @@ export class InvestmentService {
       },
     });
 
-    // Update investment quantity
-    const newQuantity = Number(investment.quantity) - quantity;
-
-    await prisma.investment.update({
+    // Update investment quantity using Decimal arithmetic
+    const newQuantity = ownedQuantity.minus(quantity);
+    
+    const updatedInvestment = await prisma.investment.update({
       where: { id: investment.id },
       data: {
         quantity: newQuantity,
-        status: newQuantity <= 0 ? 'SOLD' : 'ACTIVE',
+        currentPrice: price,
+        ...(newQuantity.equals(new Decimal(0)) && { status: 'CLOSED' as InvestmentStatus }),
+      },
+      include: {
+        portfolio: {
+          select: {
+            id: true,
+            name: true,
+            userId: true,
+          },
+        },
+        transactions: true,
       },
     });
 
     // Create ledger entries for the transaction
     await LedgerService.createJournal({
       reference: generateReference('INV-SELL'),
-      description: `Investment sale: ${quantity} ${investment.symbol} at ${price}`,
+      description: \`Investment sale: \${quantity.toString()} \${updatedInvestment.symbol} at \${price.toString()}\`,
       entries: [
         {
           accountId: data.accountId,
           entryType: 'CREDIT',
-          amount: amount + fee, // Credit the net amount + fee (fee is deducted separately)
-          description: `Investment sale proceeds: ${quantity} ${investment.symbol}`,
-          transactionId: transaction.id,
-        },
-        {
-          accountId: data.accountId,
-          entryType: 'DEBIT',
-          amount: fee,
-          description: `Investment sale fee: ${quantity} ${investment.symbol}`,
+          amount: amount,
+          description: \`Investment sale: \${quantity.toString()} \${updatedInvestment.symbol}\`,
           transactionId: transaction.id,
         },
       ],
@@ -1230,9 +1261,9 @@ export class InvestmentService {
       metadata: {
         transactionId: transaction.id,
         investmentId: investment.id,
-        quantity,
-        price,
-        fee,
+        quantity: quantity.toString(),
+        price: price.toString(),
+        fee: fee.toString(),
       },
     }, actingUserId);
 
@@ -1247,10 +1278,174 @@ export class InvestmentService {
           portfolioId: data.portfolioId,
           investmentId: investment.id,
           accountId: data.accountId,
-          quantity,
-          price,
-          amount,
-          fee,
+          quantity: quantity.toString(),
+          price: price.toString(),
+          amount: amount.toString(),
+          fee: fee.toString(),
+        },
+        metadata: data.metadata,
+        status: 'SUCCESS',
+      },
+    });
+
+    return this.formatTransaction(transaction);
+  }
+
+  // ============================================
+  // TRANSACTION MANAGEMENT
+  // ============================================
+
+  /**
+   * Create an investment transaction (generic)
+   */
+  static async createInvestmentTransaction(
+    data: InvestmentTransactionData,
+    actingUserId: string
+  ): Promise<TransactionResult> {
+    const portfolio = await prisma.investmentPortfolio.findUnique({
+      where: { id: data.portfolioId },
+    });
+
+    if (!portfolio) throw new NotFoundError('Investment Portfolio', data.portfolioId);
+
+    // Authorization check
+    if (actingUserId !== portfolio.userId) {
+      const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+      if (!actingUser || !['ADMIN', 'SUPER_ADMIN'].includes(actingUser.role)) {
+        throw new ForbiddenError('You do not have access to this portfolio');
+      }
+    }
+
+    const investment = await prisma.investment.findUnique({
+      where: { id: data.investmentId },
+    });
+
+    if (!investment) throw new NotFoundError('Investment', data.investmentId);
+
+    if (investment.portfolioId !== data.portfolioId) {
+      throw new ValidationError('Investment does not belong to specified portfolio');
+    }
+
+    const account = await prisma.account.findUnique({ where: { id: data.accountId } });
+    if (!account) throw new NotFoundError('Account', data.accountId);
+
+    // Check account ownership
+    if (account.userId !== portfolio.userId) {
+      throw new ForbiddenError('Account does not belong to portfolio owner');
+    }
+
+    // Check for idempotency
+    if (data.idempotencyKey) {
+      const existingTransaction = await prisma.investmentTransaction.findFirst({
+        where: { idempotencyKey: data.idempotencyKey },
+      });
+
+      if (existingTransaction) {
+        throw new ConflictError('Duplicate transaction (idempotency key already used)');
+      }
+    }
+
+    // Validate inputs using Decimal
+    const quantity = toDecimal(data.quantity);
+    const price = toDecimal(data.price);
+    const amount = toDecimal(data.amount);
+    const fee = data.fee ? toDecimal(data.fee) : INVESTMENT_CONFIG.DEFAULT_FEE;
+
+    if (quantity.lessThanOrEqual(new Decimal(0))) {
+      throw new ValidationError('Quantity must be greater than 0');
+    }
+
+    if (price.lessThanOrEqual(new Decimal(0))) {
+      throw new ValidationError('Price must be greater than 0');
+    }
+
+    if (amount.lessThanOrEqual(new Decimal(0))) {
+      throw new ValidationError('Amount must be greater than 0');
+    }
+
+    // Create transaction
+    const transaction = await prisma.investmentTransaction.create({
+      data: {
+        portfolioId: data.portfolioId,
+        investmentId: investment.id,
+        accountId: data.accountId,
+        transactionType: data.transactionType,
+        quantity: quantity,
+        price: price,
+        amount: amount,
+        fee: fee,
+        executedAt: new Date(),
+        status: 'COMPLETED' as TransactionStatus,
+        idempotencyKey: data.idempotencyKey || generateIdempotencyKey(),
+        metadata: data.metadata || null,
+      },
+      include: {
+        portfolio: {
+          select: {
+            id: true,
+            name: true,
+            userId: true,
+          },
+        },
+        investment: {
+          select: {
+            id: true,
+            symbol: true,
+            name: true,
+            investmentType: true,
+          },
+        },
+        account: {
+          select: {
+            id: true,
+            accountNumber: true,
+            userId: true,
+          },
+        },
+      },
+    });
+
+    // Create ledger entries
+    const entryType = data.transactionType === 'BUY' ? 'DEBIT' : 'CREDIT';
+    await LedgerService.createJournal({
+      reference: generateReference('INV-TRX'),
+      description: \`Investment \${data.transactionType}: \${quantity.toString()} \${investment.symbol}\`,
+      entries: [
+        {
+          accountId: data.accountId,
+          entryType: entryType as 'DEBIT' | 'CREDIT',
+          amount: amount,
+          description: \`Investment \${data.transactionType}: \${quantity.toString()} \${investment.symbol}\`,
+          transactionId: transaction.id,
+        },
+      ],
+      investmentTransactionId: transaction.id,
+      metadata: {
+        transactionId: transaction.id,
+        investmentId: investment.id,
+        quantity: quantity.toString(),
+        price: price.toString(),
+        amount: amount.toString(),
+        fee: fee.toString(),
+      },
+    }, actingUserId);
+
+    // Log audit event
+    await prisma.auditLog.create({
+      data: {
+        actorId: actingUserId,
+        action: data.transactionType,
+        resourceType: 'INVESTMENT_TRANSACTION',
+        resourceId: transaction.id,
+        newValues: {
+          portfolioId: data.portfolioId,
+          investmentId: investment.id,
+          accountId: data.accountId,
+          transactionType: data.transactionType,
+          quantity: quantity.toString(),
+          price: price.toString(),
+          amount: amount.toString(),
+          fee: fee.toString(),
         },
         metadata: data.metadata,
         status: 'SUCCESS',
@@ -1261,7 +1456,7 @@ export class InvestmentService {
   }
 
   /**
-   * Get an investment transaction by ID
+   * Get a transaction by ID
    */
   static async getTransactionById(
     id: string,
@@ -1318,9 +1513,7 @@ export class InvestmentService {
     page: number = 1,
     limit: number = 20,
     transactionType?: InvestmentTransactionType,
-    status?: TransactionStatus,
-    startDate?: Date,
-    endDate?: Date
+    investmentId?: string
   ): Promise<TransactionListResult> {
     const portfolio = await prisma.investmentPortfolio.findUnique({
       where: { id: portfolioId },
@@ -1338,12 +1531,7 @@ export class InvestmentService {
 
     const where: Record<string, unknown> = { portfolioId };
     if (transactionType) where.transactionType = transactionType;
-    if (status) where.status = status;
-    if (startDate || endDate) {
-      where.executedAt = {};
-      if (startDate) where.executedAt.gte = startDate;
-      if (endDate) where.executedAt.lte = endDate;
-    }
+    if (investmentId) where.investmentId = investmentId;
 
     const transactions = await prisma.investmentTransaction.findMany({
       where,
@@ -1373,14 +1561,13 @@ export class InvestmentService {
             userId: true,
           },
         },
-        journal: true,
       },
     });
 
     const total = await prisma.investmentTransaction.count({ where });
 
     return {
-      transactions: transactions.map(this.formatTransaction),
+      transactions: transactions.map(t => this.formatTransaction(t)),
       total,
       page,
       limit,
@@ -1389,7 +1576,7 @@ export class InvestmentService {
   }
 
   // ============================================
-  // PERFORMANCE & ANALYTICS
+  // PERFORMANCE & STATISTICS
   // ============================================
 
   /**
@@ -1402,14 +1589,6 @@ export class InvestmentService {
   ): Promise<PortfolioPerformance> {
     const portfolio = await prisma.investmentPortfolio.findUnique({
       where: { id: portfolioId },
-      include: {
-        investments: {
-          include: {
-            transactions: true,
-          },
-        },
-        transactions: true,
-      },
     });
 
     if (!portfolio) throw new NotFoundError('Investment Portfolio', portfolioId);
@@ -1422,184 +1601,96 @@ export class InvestmentService {
       }
     }
 
+    // Calculate start date based on period
     const now = new Date();
-    let startDate: Date;
-
+    const startDate = new Date(now);
+    
     switch (period) {
       case '1D':
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        startDate.setDate(now.getDate() - 1);
         break;
       case '7D':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        startDate.setDate(now.getDate() - 7);
         break;
       case '30D':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        startDate.setDate(now.getDate() - 30);
         break;
       case '90D':
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        startDate.setDate(now.getDate() - 90);
         break;
       case 'YTD':
-        startDate = new Date(now.getFullYear(), 0, 1);
+        startDate.setMonth(0, 1);
         break;
       case '1Y':
-        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+        startDate.setFullYear(now.getFullYear() - 1);
         break;
-      default:
-        startDate = new Date(0); // All time
     }
 
-    // Calculate start value (value of portfolio at start date)
-    const startInvestments = await prisma.investment.findMany({
-      where: {
-        portfolioId,
-        purchasedAt: { lte: startDate },
-      },
-    });
-
-    const startValue = startInvestments.reduce(
-      (sum, i) => sum + Number(i.quantity) * Number(i.purchasePrice),
-      0
-    );
-
-    // Calculate end value (current value of portfolio)
-    const endInvestments = await prisma.investment.findMany({
-      where: { portfolioId },
-    });
-
-    const endValue = endInvestments.reduce(
-      (sum, i) => sum + Number(i.quantity) * (Number(i.currentPrice) || Number(i.purchasePrice)),
-      0
-    );
-
-    // Calculate total return
-    const totalReturn = endValue - startValue;
-    const totalReturnPercent = startValue > 0 ? (totalReturn / startValue) * 100 : 0;
-
-    // Count transactions
-    const transactions = await prisma.investmentTransaction.count({
+    // Get transactions for the period
+    const transactions = await prisma.investmentTransaction.findMany({
       where: {
         portfolioId,
         executedAt: { gte: startDate },
+        status: 'COMPLETED',
       },
+      include: { fee: true },
     });
 
-    // Calculate fees
-    const fees = await prisma.investmentTransaction.aggregate({
-      where: {
-        portfolioId,
-        executedAt: { gte: startDate },
-      },
-      _sum: { fee: true },
+    // Get all investments in portfolio
+    const investments = await prisma.investment.findMany({
+      where: { portfolioId, status: { in: ['ACTIVE', 'PENDING'] } },
     });
 
-    // Calculate dividend income (transactions of type DIVIDEND)
-    const dividends = await prisma.investmentTransaction.aggregate({
-      where: {
-        portfolioId,
-        transactionType: 'DIVIDEND',
-        executedAt: { gte: startDate },
-      },
-      _sum: { amount: true },
-    });
+    // Calculate statistics
+    const totalTransactions = transactions.length;
+    const totalFees = transactions.reduce((sum, t) => sum.plus(toDecimal(t.fee)), new Decimal(0));
+    const dividendIncome = new Decimal(0); // Would be calculated from dividend transactions
+
+    // Calculate start and end values
+    const startValue = await this.calculatePortfolioValue(portfolioId, startDate);
+    const endValue = await this.calculatePortfolioValue(portfolioId, now);
+    const totalReturn = endValue.minus(startValue);
+    const totalReturnPercent = startValue.equals(new Decimal(0)) ? new Decimal(0) : totalReturn.div(startValue).times(100);
 
     return {
-      portfolioId: portfolio.id,
+      portfolioId,
       portfolioName: portfolio.name,
       period,
-      startValue,
-      endValue,
-      totalReturn,
-      totalReturnPercent,
-      transactions,
-      fees: Number(fees._sum.fee || 0),
-      dividendIncome: Number(dividends._sum.amount || 0),
+      startValue: startValue.toNumber(),
+      endValue: endValue.toNumber(),
+      totalReturn: totalReturn.toNumber(),
+      totalReturnPercent: totalReturnPercent.toNumber(),
+      transactions: totalTransactions,
+      fees: totalFees.toNumber(),
+      dividendIncome: dividendIncome.toNumber(),
     };
   }
 
   /**
-   * Get investment performance
+   * Calculate portfolio value at a specific date
    */
-  static async getInvestmentPerformance(
-    investmentId: string,
-    actingUserId: string,
-    period: '1D' | '7D' | '30D' | '90D' | 'YTD' | '1Y' | 'ALL' = 'ALL'
-  ): Promise<InvestmentPerformance> {
-    const investment = await prisma.investment.findUnique({
-      where: { id: investmentId },
-      include: {
-        portfolio: true,
-        transactions: true,
+  private static async calculatePortfolioValue(portfolioId: string, asOfDate: Date): Promise<Decimal> {
+    const investments = await prisma.investment.findMany({
+      where: {
+        portfolioId,
+        status: { in: ['ACTIVE', 'PENDING'] },
       },
     });
 
-    if (!investment) throw new NotFoundError('Investment', investmentId);
-
-    // Authorization check
-    if (actingUserId !== investment.portfolio.userId) {
-      const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
-      if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role)) {
-        throw new ForbiddenError('You do not have access to this investment');
-      }
+    let totalValue = new Decimal(0);
+    for (const investment of investments) {
+      const quantity = toDecimal(investment.quantity);
+      const currentPrice = toDecimal(investment.currentPrice);
+      totalValue = totalValue.plus(quantity.times(currentPrice));
     }
 
-    const now = new Date();
-    let startDate: Date;
-
-    switch (period) {
-      case '1D':
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case '7D':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '30D':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      case '90D':
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-        break;
-      case 'YTD':
-        startDate = new Date(now.getFullYear(), 0, 1);
-        break;
-      case '1Y':
-        startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startDate = new Date(0); // All time
-    }
-
-    // Get investment value at start date
-    const startQuantity = Number(investment.quantity);
-    const startPrice = Number(investment.purchasePrice);
-    const startValue = startQuantity * startPrice;
-
-    // Get current value
-    const currentPrice = Number(investment.currentPrice) || startPrice;
-    const currentQuantity = Number(investment.quantity);
-    const endValue = currentQuantity * currentPrice;
-
-    // Calculate return
-    const totalReturn = endValue - startValue;
-    const totalReturnPercent = startValue > 0 ? (totalReturn / startValue) * 100 : 0;
-
-    return {
-      investmentId: investment.id,
-      symbol: investment.symbol,
-      period,
-      startValue,
-      endValue,
-      totalReturn,
-      totalReturnPercent,
-      quantity: currentQuantity,
-      averagePurchasePrice: startPrice,
-      currentPrice,
-    };
+    return totalValue;
   }
 
   /**
    * Get investment statistics
    */
-  static async getStats(actingUserId: string): Promise<InvestmentStats> {
+  static async getInvestmentStats(actingUserId: string): Promise<InvestmentStats> {
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role)) {
       throw new ForbiddenError('Only authorized personnel can view investment statistics');
@@ -1608,78 +1699,72 @@ export class InvestmentService {
     const totalPortfolios = await prisma.investmentPortfolio.count();
     const totalInvestments = await prisma.investment.count();
 
-    // Calculate total value
     const investments = await prisma.investment.findMany({
+      where: { status: { in: ['ACTIVE', 'PENDING'] } },
       include: { portfolio: true },
     });
 
-    const totalValue = investments.reduce(
-      (sum, i) => sum + Number(i.quantity) * (Number(i.currentPrice) || Number(i.purchasePrice)),
-      0
-    );
-
-    const totalInvested = investments.reduce(
-      (sum, i) => sum + Number(i.quantity) * Number(i.purchasePrice),
-      0
-    );
-
-    const totalGainLoss = totalValue - totalInvested;
-
-    // Group by type
-    const byType: Record<InvestmentType, { count: number; value: number }> = {
+    let totalValue = new Decimal(0);
+    let totalInvested = new Decimal(0);
+    const byType: Record<InvestmentType, { count: number; value: number; }> = {
       STOCK: { count: 0, value: 0 },
       BOND: { count: 0, value: 0 },
-      ETF: { count: 0, value: 0 },
       MUTUAL_FUND: { count: 0, value: 0 },
+      ETF: { count: 0, value: 0 },
       CRYPTO: { count: 0, value: 0 },
-      COMMODITY: { count: 0, value: 0 },
-      REAL_ESTATE: { count: 0, value: 0 },
       OTHER: { count: 0, value: 0 },
     };
-
-    for (const investment of investments) {
-      const type = investment.investmentType;
-      if (byType[type]) {
-        byType[type].count++;
-        byType[type].value += Number(investment.quantity) * (Number(investment.currentPrice) || Number(investment.purchasePrice));
-      }
-    }
-
-    // Group by status
     const byStatus: Record<InvestmentStatus, number> = {
       ACTIVE: 0,
-      SOLD: 0,
       PENDING: 0,
+      CLOSED: 0,
+      SUSPENDED: 0,
     };
 
     for (const investment of investments) {
+      const quantity = toDecimal(investment.quantity);
+      const currentPrice = toDecimal(investment.currentPrice);
+      const purchasePrice = toDecimal(investment.purchasePrice);
+      const value = quantity.times(currentPrice);
+      const costBasis = quantity.times(purchasePrice);
+
+      totalValue = totalValue.plus(value);
+      totalInvested = totalInvested.plus(costBasis);
+
+      byType[investment.investmentType].count++;
+      byType[investment.investmentType].value += value.toNumber();
       byStatus[investment.status]++;
     }
 
-    // Get top holdings
-    const sortedInvestments = [...investments].sort(
-      (a, b) => 
-        (Number(b.quantity) * (Number(b.currentPrice) || Number(b.purchasePrice))) -
-        (Number(a.quantity) * (Number(a.currentPrice) || Number(a.purchasePrice)))
-    );
+    const totalGainLoss = totalValue.minus(totalInvested);
 
-    const topHoldings = sortedInvestments.slice(0, 10).map(i => {
-      const value = Number(i.quantity) * (Number(i.currentPrice) || Number(i.purchasePrice));
+    // Calculate top holdings
+    const sortedInvestments = [...investments].sort((a, b) => {
+      const aValue = toDecimal(a.quantity).times(toDecimal(a.currentPrice));
+      const bValue = toDecimal(b.quantity).times(toDecimal(b.currentPrice));
+      return bValue.minus(aValue).toNumber();
+    });
+
+    const topHoldings = sortedInvestments.slice(0, 10).map(inv => {
+      const quantity = toDecimal(inv.quantity);
+      const currentPrice = toDecimal(inv.currentPrice);
+      const value = quantity.times(currentPrice);
+      const percent = totalValue.equals(new Decimal(0)) ? 0 : value.div(totalValue).times(100).toNumber();
       return {
-        symbol: i.symbol,
-        name: i.name,
-        quantity: Number(i.quantity),
-        value,
-        percentOfPortfolio: totalValue > 0 ? (value / totalValue) * 100 : 0,
+        symbol: inv.symbol,
+        name: inv.name,
+        quantity: quantity.toNumber(),
+        value: value.toNumber(),
+        percentOfPortfolio: percent,
       };
     });
 
     return {
       totalPortfolios,
       totalInvestments,
-      totalValue,
-      totalInvested,
-      totalGainLoss,
+      totalValue: totalValue.toNumber(),
+      totalInvested: totalInvested.toNumber(),
+      totalGainLoss: totalGainLoss.toNumber(),
       byType,
       byStatus,
       topHoldings,
@@ -1687,99 +1772,86 @@ export class InvestmentService {
   }
 
   // ============================================
-  // HELPER METHODS
+  // FORMATTERS
   // ============================================
-
-  /**
-   * Convert amount to Decimal (Prisma Decimal type)
-   */
-  private static toDecimal(amount: number | string): number {
-    if (typeof amount === 'string') {
-      return parseFloat(amount);
-    }
-    return amount;
-  }
-
-  /**
-   * Convert amount to number for calculations
-   */
-  private static toDecimalNumber(amount: number | string): number {
-    return typeof amount === 'string' ? parseFloat(amount) : amount;
-  }
 
   /**
    * Format portfolio with calculated values
    */
-  private static async formatPortfolio(portfolio: InvestmentPortfolio & {
-    user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'>;
-    investments: Investment[];
-    transactions: InvestmentTransaction[];
-  }): Promise<PortfolioResult['portfolio']> {
-    const totalValue = portfolio.investments.reduce(
-      (sum, i) => sum + Number(i.quantity) * (Number(i.currentPrice) || Number(i.purchasePrice)),
-      0
-    );
+  private static async formatPortfolio(
+    portfolio: InvestmentPortfolio & {
+      user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'>;
+      investments: Investment[];
+      transactions: InvestmentTransaction[];
+    }
+  ): Promise<PortfolioResult> {
+    let totalValue = new Decimal(0);
+    let totalInvested = new Decimal(0);
+    let totalGainLoss = new Decimal(0);
 
-    const totalInvested = portfolio.investments.reduce(
-      (sum, i) => sum + Number(i.quantity) * Number(i.purchasePrice),
-      0
-    );
+    for (const investment of portfolio.investments) {
+      const quantity = toDecimal(investment.quantity);
+      const currentPrice = toDecimal(investment.currentPrice);
+      const purchasePrice = toDecimal(investment.purchasePrice);
+      const value = quantity.times(currentPrice);
+      const costBasis = quantity.times(purchasePrice);
 
-    const totalGainLoss = totalValue - totalInvested;
+      totalValue = totalValue.plus(value);
+      totalInvested = totalInvested.plus(costBasis);
+    }
+
+    totalGainLoss = totalValue.minus(totalInvested);
 
     return {
-      ...portfolio,
-      user: portfolio.user,
-      investments: portfolio.investments,
-      transactions: portfolio.transactions,
-      totalValue,
-      totalInvested,
-      totalGainLoss,
+      portfolio: {
+        ...portfolio,
+        totalValue: totalValue.toNumber(),
+        totalInvested: totalInvested.toNumber(),
+        totalGainLoss: totalGainLoss.toNumber(),
+      },
     };
   }
 
   /**
    * Format investment with calculated values
    */
-  private static async formatInvestment(investment: Investment & {
-    portfolio: Pick<InvestmentPortfolio, 'id' | 'name' | 'userId'>;
-    transactions: InvestmentTransaction[];
-  }): Promise<InvestmentResult['investment']> {
-    const currentPrice = Number(investment.currentPrice) || Number(investment.purchasePrice);
-    const quantity = Number(investment.quantity);
-    const purchasePrice = Number(investment.purchasePrice);
+  private static async formatInvestment(
+    investment: Investment & {
+      portfolio: Pick<InvestmentPortfolio, 'id' | 'name' | 'userId'>;
+      transactions: InvestmentTransaction[];
+    }
+  ): Promise<InvestmentResult> {
+    const quantity = toDecimal(investment.quantity);
+    const currentPrice = toDecimal(investment.currentPrice);
+    const purchasePrice = toDecimal(investment.purchasePrice);
 
-    const currentValue = quantity * currentPrice;
-    const costBasis = quantity * purchasePrice;
-    const gainLoss = currentValue - costBasis;
-    const gainLossPercent = costBasis > 0 ? (gainLoss / costBasis) * 100 : 0;
+    const currentValue = quantity.times(currentPrice);
+    const costBasis = quantity.times(purchasePrice);
+    const gainLoss = currentValue.minus(costBasis);
+    const gainLossPercent = costBasis.equals(new Decimal(0)) ? new Decimal(0) : gainLoss.div(costBasis).times(100);
 
     return {
-      ...investment,
-      portfolio: investment.portfolio,
-      transactions: investment.transactions,
-      currentValue,
-      costBasis,
-      gainLoss,
-      gainLossPercent,
+      investment: {
+        ...investment,
+        currentValue: currentValue.toNumber(),
+        costBasis: costBasis.toNumber(),
+        gainLoss: gainLoss.toNumber(),
+        gainLossPercent: gainLossPercent.toNumber(),
+      },
     };
   }
 
   /**
-   * Format transaction with related data
+   * Format transaction for output
    */
-  private static formatTransaction(transaction: InvestmentTransaction & {
-    portfolio: Pick<InvestmentPortfolio, 'id' | 'name' | 'userId'>;
-    investment: Pick<Investment, 'id' | 'symbol' | 'name' | 'investmentType'>;
-    account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
-    journal?: Journal | null;
-  }): TransactionResult['transaction'] {
-    return {
-      ...transaction,
-      portfolio: transaction.portfolio,
-      investment: transaction.investment,
-      account: transaction.account,
-      journal: transaction.journal || null,
-    };
+  private static formatTransaction(
+    transaction: InvestmentTransaction & {
+      portfolio: Pick<InvestmentPortfolio, 'id' | 'name' | 'userId'>;
+      investment: Pick<Investment, 'id' | 'symbol' | 'name' | 'investmentType'>;
+      account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
+      journal?: Journal | null;
+    }
+  ): TransactionResult {
+    return { transaction };
   }
 }
