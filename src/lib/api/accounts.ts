@@ -1,9 +1,7 @@
-// src/lib/api/accounts.ts
-// Account API client
-
 import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
+import { Decimal } from '@prisma/client/runtime/library';
 
-// Types matching Prisma models
+// Types matching Prisma models with Decimal for monetary fields
 export interface Account {
   id: string;
   accountNumber: string;
@@ -11,8 +9,8 @@ export interface Account {
   name: string;
   accountType: string;
   currency: string;
-  balance: number;
-  availableBalance: number;
+  balance: Decimal;
+  availableBalance: Decimal;
   status: string;
   createdAt: Date;
   updatedAt: Date;
@@ -45,7 +43,7 @@ export interface CreateAccountData {
   name: string;
   accountType: string;
   currency?: string;
-  initialDeposit?: number;
+  initialDeposit?: Decimal;
 }
 
 export interface UpdateAccountData {
@@ -144,13 +142,13 @@ class AccountsApi {
     return (backendResponse as BackendSuccessResponse<Account>).data;
   }
 
-  async getAccountBalance(id: string): Promise<{ balance: number; availableBalance: number }> {
+  async getAccountBalance(id: string): Promise<{ balance: Decimal; availableBalance: Decimal }> {
     const token = this.getToken();
-    const backendResponse = await apiClient.get<{ balance: number; availableBalance: number }>('/api/accounts/' + id + '/balance', token);
+    const backendResponse = await apiClient.get<{ balance: Decimal; availableBalance: Decimal }>('/api/accounts/' + id + '/balance', token);
     if (!backendResponse.success) {
       throw backendResponse;
     }
-    return (backendResponse as BackendSuccessResponse<{ balance: number; availableBalance: number }>).data;
+    return (backendResponse as BackendSuccessResponse<{ balance: Decimal; availableBalance: Decimal }>).data;
   }
 
   async getAccountStatement(id: string, startDate?: string, endDate?: string): Promise<any> {
