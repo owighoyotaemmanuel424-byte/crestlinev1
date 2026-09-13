@@ -1,12 +1,27 @@
 import { prisma } from '../prisma';
 import { ForbiddenError, NotFoundError, ValidationError, InsufficientBalanceError } from '../utils/errors';
 import { generateReference, generateIdempotencyKey } from '../utils/security';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { Deposit, DepositMethod, DepositStatus, User, Account, Journal } from '@prisma/client';
+
+/**
+ * Convert amount to Decimal for safe financial arithmetic
+ * Accepts number, string, or Decimal
+ */
+function toDecimal(amount: number | string | Decimal): Decimal {
+  if (amount instanceof Decimal) {
+    return amount;
+  }
+  if (typeof amount === 'string') {
+    return new Decimal(amount);
+  }
+  return new Decimal(amount.toString());
+}
 
 export interface CreateDepositData {
   userId: string;
   accountId: string;
-  amount: number;
+  amount: number | string | Decimal;
   currency?: string;
   method: DepositMethod;
   provider?: string;
@@ -26,7 +41,11 @@ export class DepositService {
     if (!account) throw new NotFoundError('Account', data.accountId);
     if (account.userId !== data.userId) throw new ForbiddenError('Account does not belong to user');
     if (account.status !== 'ACTIVE') throw new ValidationError(`Account is ${account.status.toLowerCase()}`);
-    if (data.amount <= 0) throw new ValidationError('Amount must be positive');
+    
+    const amountDecimal = toDecimal(data.amount);
+    
+    if (amountDecimal.lessThanOrEqual(new Decimal(0))) throw new ValidationError('Amount must be positive');
+    
     if (data.idempotencyKey) {
       const existing = await prisma.deposit.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
       if (existing) return { deposit: existing };
@@ -39,7 +58,7 @@ export class DepositService {
           reference,
           userId: data.userId,
           accountId: data.accountId,
-          amount: data.amount,
+          amount: amountDecimal,
           currency: data.currency || 'USD',
           method: data.method,
           provider: data.provider,
@@ -57,20 +76,24 @@ export class DepositService {
           depositId: deposit.id,
         },
       });
+      
+      const accountBalance = toDecimal(account.balance);
+      const newBalance = accountBalance.plus(amountDecimal);
+      
       await tx.ledgerEntry.create({
         data: {
           journalId: journal.id,
           accountId: data.accountId,
           entryType: 'CREDIT' as const,
-          amount: data.amount,
-          balance: account.balance.toNumber() + data.amount,
+          amount: amountDecimal,
+          balance: newBalance,
           description: `Deposit ${reference}`,
           transactionId: null,
         },
       });
       await tx.account.update({
         where: { id: data.accountId },
-        data: { balance: { increment: data.amount }, availableBalance: { increment: data.amount } },
+        data: { balance: { increment: amountDecimal }, availableBalance: { increment: amountDecimal } },
       });
       const updatedDeposit = await tx.deposit.update({
         where: { id: deposit.id },
@@ -83,7 +106,7 @@ export class DepositService {
           action: 'CREATE',
           resourceType: 'DEPOSIT',
           resourceId: deposit.id,
-          newValues: { reference, accountId: data.accountId, amount: data.amount, method: data.method },
+          newValues: { reference, accountId: data.accountId, amount: amountDecimal.toString(), method: data.method },
           status: 'SUCCESS',
         },
       });
