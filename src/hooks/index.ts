@@ -8,3 +8,4 @@ export { useTransfers, type UseTransfersReturn, type UseTransfersState } from '.
 export { useDeposits, type UseDepositsReturn, type UseDepositsState } from './useDeposits';
 export { useWithdrawals, type UseWithdrawalsReturn, type UseWithdrawalsState } from './useWithdrawals';
 export { useNotifications, type UseNotificationsReturn, type UseNotificationsState } from './useNotifications';
+export { useBeneficiaries, type UseBeneficiariesReturn, type UseBeneficiariesState, useBeneficiary, type UseBeneficiaryReturn, type UseBeneficiaryState } from './useBeneficiaries';
