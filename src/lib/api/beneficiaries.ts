@@ -1,7 +1,7 @@
 // src/lib/api/beneficiaries.ts
 // Beneficiary API client
 
-import { apiClient } from './client';
+import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
 
 export interface Beneficiary {
   id: string;
@@ -59,25 +59,6 @@ export interface UpdateBeneficiaryData {
   notes?: string;
 }
 
-// Backend response types
-interface BackendPaginatedResponse<T> {
-  success: boolean;
-  data: T[];
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
-interface BackendSuccessResponse<T> {
-  success: boolean;
-  data: T;
-}
-
 class BeneficiariesApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
@@ -87,15 +68,14 @@ class BeneficiariesApi {
   }
 
   private transformPaginatedResponse<T>(
-    backendResponse: BackendPaginatedResponse<T>,
-    fieldName: string
-  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number } {
+    backendResponse: BackendSuccessResponse<T[]>
+  ): { beneficiaries: T[]; total: number; page: number; limit: number; totalPages: number } {
     return {
-      [fieldName]: backendResponse.data,
-      total: backendResponse.meta.total,
-      page: backendResponse.meta.page,
-      limit: backendResponse.meta.limit,
-      totalPages: backendResponse.meta.totalPages,
+      beneficiaries: backendResponse.data,
+      total: backendResponse.meta?.total || 0,
+      page: backendResponse.meta?.page || 1,
+      limit: backendResponse.meta?.limit || 20,
+      totalPages: backendResponse.meta?.totalPages || 1,
     };
   }
 
@@ -108,32 +88,47 @@ class BeneficiariesApi {
     if (params.isVerified !== undefined) queryParams.append('isVerified', params.isVerified.toString());
     
     const endpoint = `/api/beneficiaries?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Beneficiary>>(endpoint, token);
-    return this.transformPaginatedResponse<Beneficiary>(backendResponse, 'beneficiaries') as BeneficiaryListResult;
+    const backendResponse = await apiClient.get<Beneficiary[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Beneficiary>(backendResponse as BackendSuccessResponse<Beneficiary[]>);
   }
 
   async getBeneficiaryById(id: string): Promise<Beneficiary> {
     const token = this.getToken();
-    const backendResponse = await apiClient.get<BackendSuccessResponse<Beneficiary>>(`/api/beneficiaries/${id}`, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.get<Beneficiary>(`/api/beneficiaries/${id}`, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Beneficiary>).data;
   }
 
   async createBeneficiary(data: CreateBeneficiaryData): Promise<Beneficiary> {
     const token = this.getToken();
-    const backendResponse = await apiClient.post<BackendSuccessResponse<Beneficiary>>('/api/beneficiaries', data, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.post<Beneficiary>('/api/beneficiaries', data, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Beneficiary>).data;
   }
 
   async updateBeneficiary(id: string, data: UpdateBeneficiaryData): Promise<Beneficiary> {
     const token = this.getToken();
-    const backendResponse = await apiClient.patch<BackendSuccessResponse<Beneficiary>>(`/api/beneficiaries/${id}`, data, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.patch<Beneficiary>(`/api/beneficiaries/${id}`, data, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Beneficiary>).data;
   }
 
   async deleteBeneficiary(id: string): Promise<{ message: string }> {
     const token = this.getToken();
-    const backendResponse = await apiClient.delete<BackendSuccessResponse<{ message: string }>>(`/api/beneficiaries/${id}`, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.delete<{ message: string }>(`/api/beneficiaries/${id}`, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<{ message: string }>).data;
   }
 
   // Admin methods
@@ -147,20 +142,29 @@ class BeneficiariesApi {
     if (params.userId) queryParams.append('userId', params.userId);
     
     const endpoint = `/api/admin/beneficiaries?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Beneficiary>>(endpoint, token);
-    return this.transformPaginatedResponse<Beneficiary>(backendResponse, 'beneficiaries') as BeneficiaryListResult;
+    const backendResponse = await apiClient.get<Beneficiary[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Beneficiary>(backendResponse as BackendSuccessResponse<Beneficiary[]>);
   }
 
   async verifyBeneficiary(id: string): Promise<Beneficiary> {
     const token = this.getToken();
-    const backendResponse = await apiClient.patch<BackendSuccessResponse<Beneficiary>>(`/api/admin/beneficiaries/${id}/verify`, {}, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.patch<Beneficiary>(`/api/admin/beneficiaries/${id}/verify`, {}, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Beneficiary>).data;
   }
 
   async rejectBeneficiary(id: string, reason?: string): Promise<Beneficiary> {
     const token = this.getToken();
-    const backendResponse = await apiClient.patch<BackendSuccessResponse<Beneficiary>>(`/api/admin/beneficiaries/${id}/reject`, { reason }, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.patch<Beneficiary>(`/api/admin/beneficiaries/${id}/reject`, { reason }, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Beneficiary>).data;
   }
 }
 
