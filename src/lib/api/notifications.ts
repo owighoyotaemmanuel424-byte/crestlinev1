@@ -33,12 +33,46 @@ export interface NotificationListResult {
   unreadCount: number;
 }
 
+// Backend response types
+interface BackendPaginatedResponse<T> {
+  success: boolean;
+  data: T[];
+  meta: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+  };
+}
+
+interface BackendSuccessResponse<T> {
+  success: boolean;
+  data: T;
+}
+
 class NotificationsApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('token') || null;
     }
     return null;
+  }
+
+  private transformPaginatedResponse<T>(
+    backendResponse: BackendPaginatedResponse<T>,
+    fieldName: string
+  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number; unreadCount?: number } {
+    const base = {
+      [fieldName]: backendResponse.data,
+      total: backendResponse.meta.total,
+      page: backendResponse.meta.page,
+      limit: backendResponse.meta.limit,
+      totalPages: backendResponse.meta.totalPages,
+    };
+    // Add unreadCount if present in response
+    return base as any;
   }
 
   async getMyNotifications(params: NotificationListParams = {}): Promise<NotificationListResult> {
@@ -51,27 +85,34 @@ class NotificationsApi {
     if (params.category) queryParams.append('category', params.category);
     
     const endpoint = `/api/notifications?${queryParams.toString()}`;
-    return apiClient.get<NotificationListResult>(endpoint, token);
+    const backendResponse = await apiClient.get<BackendPaginatedResponse<Notification>>(endpoint, token);
+    const result = this.transformPaginatedResponse<Notification>(backendResponse, 'notifications') as NotificationListResult;
+    // TODO: unreadCount needs to be fetched separately or included in backend response
+    return { ...result, unreadCount: 0 };
   }
 
   async getNotificationById(id: string): Promise<Notification> {
     const token = this.getToken();
-    return apiClient.get<Notification>(`/api/notifications/${id}`, token);
+    const backendResponse = await apiClient.get<BackendSuccessResponse<Notification>>(`/api/notifications/${id}`, token);
+    return backendResponse.data;
   }
 
   async markAsRead(id: string): Promise<Notification> {
     const token = this.getToken();
-    return apiClient.patch<Notification>(`/api/notifications/${id}/read`, {}, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<Notification>>(`/api/notifications/${id}/read`, {}, token);
+    return backendResponse.data;
   }
 
   async markAllAsRead(): Promise<{ count: number }> {
     const token = this.getToken();
-    return apiClient.patch<{ count: number }>('/api/notifications/read-all', {}, token);
+    const backendResponse = await apiClient.patch<BackendSuccessResponse<{ count: number }>>('/api/notifications/read-all', {}, token);
+    return backendResponse.data;
   }
 
   async deleteNotification(id: string): Promise<{ message: string }> {
     const token = this.getToken();
-    return apiClient.delete<{ message: string }>(`/api/notifications/${id}`, token);
+    const backendResponse = await apiClient.delete<BackendSuccessResponse<{ message: string }>>(`/api/notifications/${id}`, token);
+    return backendResponse.data;
   }
 
   // Admin methods
@@ -86,12 +127,15 @@ class NotificationsApi {
     if (params.userId) queryParams.append('userId', params.userId);
     
     const endpoint = `/api/admin/notifications?${queryParams.toString()}`;
-    return apiClient.get<NotificationListResult>(endpoint, token);
+    const backendResponse = await apiClient.get<BackendPaginatedResponse<Notification>>(endpoint, token);
+    const result = this.transformPaginatedResponse<Notification>(backendResponse, 'notifications') as NotificationListResult;
+    return { ...result, unreadCount: 0 };
   }
 
   async createNotification(data: { userId: string; title: string; message: string; type: string; category: string; metadata?: Record<string, any> }): Promise<Notification> {
     const token = this.getToken();
-    return apiClient.post<Notification>('/api/admin/notifications', data, token);
+    const backendResponse = await apiClient.post<BackendSuccessResponse<Notification>>('/api/admin/notifications', data, token);
+    return backendResponse.data;
   }
 }
 
