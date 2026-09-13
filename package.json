@@ -2,11 +2,13 @@
   "name": "crestlinev1",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@11.24.0",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "type-check": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -18,6 +20,7 @@
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:clean": "prisma migrate reset --force",
+    "db:migrate:deploy": "prisma migrate deploy",
     "docker:build": "docker build -t crestlinev1 .",
     "docker:run": "docker run -p 3000:3000 crestlinev1"
   },
