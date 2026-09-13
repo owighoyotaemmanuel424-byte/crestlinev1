@@ -23,6 +23,10 @@ import type {
 // DECIMAL UTILITIES
 // ============================================
 
+/**
+ * Convert amount to Decimal for safe financial arithmetic
+ * Accepts number, string, or Decimal
+ */
 function toDecimal(amount: number | string | Decimal): Decimal {
   if (amount instanceof Decimal) {
     return amount;
@@ -30,6 +34,7 @@ function toDecimal(amount: number | string | Decimal): Decimal {
   if (typeof amount === 'string') {
     return new Decimal(amount);
   }
+  // For numbers, convert to string first to avoid floating point precision loss
   return new Decimal(amount.toString());
 }
 
@@ -40,11 +45,11 @@ function toDecimal(amount: number | string | Decimal): Decimal {
 const FRAUD_CONFIG = {
   SUSPICIOUS_THRESHOLD: new Decimal(1000),
   HIGH_RISK_THRESHOLD: new Decimal(5000),
-  RAPID_TRANSACTION_THRESHOLD: 5,
+  RAPID_TRANSACTION_THRESHOLD: 5, // transactions in 1 hour
   RAPID_TRANSACTION_AMOUNT: new Decimal(1000),
-  UNUSUAL_TIME_WINDOW: 2,
+  UNUSUAL_TIME_WINDOW: 2, // hours
   MAX_DESCRIPTION_LENGTH: 1000,
-  VELOCITY_CHECK_WINDOW: 24,
+  VELOCITY_CHECK_WINDOW: 24, // hours
   VELOCITY_THRESHOLD: new Decimal(10000),
 } as const;
 
@@ -85,6 +90,9 @@ export interface FraudStats {
 }
 
 export class FraudService {
+  /**
+   * Perform fraud check on a transaction or amount
+   */
   static async check(
     data: FraudCheckData,
     actingUserId?: string
@@ -92,11 +100,13 @@ export class FraudService {
     const user = await prisma.user.findUnique({ where: { id: data.userId } });
     if (!user) throw new NotFoundError('User', data.userId);
 
+    // Validate amount using Decimal
     const amount = toDecimal(data.amount);
     if (amount.lessThanOrEqual(new Decimal(0))) {
       throw new ValidationError('Amount must be positive');
     }
 
+    // Check account if provided
     let account: Account | null = null;
     if (data.accountId) {
       account = await prisma.account.findUnique({ where: { id: data.accountId } });
@@ -106,18 +116,21 @@ export class FraudService {
       }
     }
 
+    // Check transaction if provided
     let transaction: Transaction | null = null;
     if (data.transactionId) {
       transaction = await prisma.transaction.findUnique({ where: { id: data.transactionId } });
       if (!transaction) throw new NotFoundError('Transaction', data.transactionId);
     }
 
+    // Initialize risk assessment
     let riskLevel: RiskLevel = 'LOW';
     let riskScore = 0;
     let isSuspicious = false;
     let isBlocked = false;
     const recommendations: string[] = [];
 
+    // Check amount thresholds using Decimal comparisons
     if (amount.greaterThanOrEqual(FRAUD_CONFIG.HIGH_RISK_THRESHOLD)) {
       riskScore += 40;
       recommendations.push('High amount - manual review recommended');
@@ -125,6 +138,7 @@ export class FraudService {
       riskScore += 20;
     }
 
+    // Check for rapid transactions (velocity check)
     const oneHourAgo = new Date();
     oneHourAgo.setHours(oneHourAgo.getHours() - 1);
 
@@ -140,23 +154,27 @@ export class FraudService {
       recommendations.push('Rapid transaction pattern detected');
     }
 
+    // Check for unusual locations
     if (data.location && user.lastLoginLocation) {
       const distance = this.calculateDistance(user.lastLoginLocation, data.location);
-      if (distance > 500) {
+      if (distance > 500) { // More than 500km from last login
         riskScore += 25;
         recommendations.push('Unusual location - distance from last login');
       }
     }
 
+    // Check for new device
     if (data.deviceId && user.lastDeviceId && data.deviceId !== user.lastDeviceId) {
       riskScore += 15;
       recommendations.push('New device detected');
     }
 
+    // Check for new IP address
     if (data.ipAddress && user.lastIpAddress && data.ipAddress !== user.lastIpAddress) {
       riskScore += 10;
     }
 
+    // Check velocity - total amount in last 24 hours using Decimal arithmetic
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
 
@@ -177,17 +195,20 @@ export class FraudService {
       isSuspicious = true;
     }
 
+    // Check for unusual transaction patterns
     const avgTransactionAmount = await this.getAverageTransactionAmount(data.userId);
     if (avgTransactionAmount.greaterThan(0) && amount.greaterThan(avgTransactionAmount.times(3))) {
       riskScore += 20;
       recommendations.push('Amount significantly higher than average');
     }
 
+    // Check if user has been flagged before
     if (user.fraudFlagged) {
       riskScore += 30;
       recommendations.push('User has previous fraud flags');
     }
 
+    // Determine final risk level
     if (riskScore >= 80) {
       riskLevel = 'HIGH';
       isSuspicious = true;
@@ -200,8 +221,10 @@ export class FraudService {
       isSuspicious = true;
     }
 
+    // Cap risk score at 100
     riskScore = Math.min(riskScore, 100);
 
+    // Create fraud alert
     const alert = await prisma.fraudAlert.create({
       data: {
         userId: data.userId,
@@ -244,6 +267,7 @@ export class FraudService {
       },
     });
 
+    // Log audit event
     await prisma.auditLog.create({
       data: {
         actorId: actingUserId || data.userId,
@@ -262,7 +286,9 @@ export class FraudService {
       },
     });
 
+    // Handle blocked transactions
     if (isBlocked) {
+      // Freeze the account
       if (data.accountId) {
         await prisma.account.update({
           where: { id: data.accountId },
@@ -270,6 +296,7 @@ export class FraudService {
         });
       }
 
+      // Send urgent notifications
       const admins = await prisma.user.findMany({
         where: { role: { in: ['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'] as Role[] } },
       });
@@ -293,11 +320,12 @@ export class FraudService {
         });
       }
 
+      // Send notification to user
       await prisma.notification.create({
         data: {
           userId: data.userId,
           title: 'Transaction Blocked - Fraud Detection',
-          message: 'Your transaction has been blocked due to fraud detection. Please contact support.',
+          message: `Your transaction has been blocked due to fraud detection. Please contact support.`,
           type: 'ERROR',
           category: 'FRAUD',
           isRead: false,
@@ -305,6 +333,7 @@ export class FraudService {
         },
       });
     } else if (isSuspicious) {
+      // Send warning notifications
       const admins = await prisma.user.findMany({
         where: { role: { in: ['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'] as Role[] } },
       });
@@ -339,6 +368,9 @@ export class FraudService {
     };
   }
 
+  /**
+   * Get fraud check by ID
+   */
   static async getById(id: string, actingUserId: string): Promise<FraudCheckResult> {
     const alert = await prisma.fraudAlert.findUnique({
       where: { id },
@@ -368,6 +400,7 @@ export class FraudService {
 
     if (!alert) throw new NotFoundError('Fraud Alert', id);
 
+    // Authorization check
     if (actingUserId !== alert.userId) {
       const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
       if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(actingUser.role)) {
@@ -385,6 +418,9 @@ export class FraudService {
     };
   }
 
+  /**
+   * List fraud alerts for a user
+   */
   static async listByUser(
     userId: string,
     actingUserId: string,
@@ -398,6 +434,7 @@ export class FraudService {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundError('User', userId);
 
+    // Authorization check
     if (actingUserId !== userId) {
       const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
       if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(actingUser.role)) {
@@ -437,6 +474,9 @@ export class FraudService {
     };
   }
 
+  /**
+   * List all fraud alerts (admin only)
+   */
   static async listAll(
     actingUserId: string,
     page: number = 1,
@@ -485,6 +525,9 @@ export class FraudService {
     };
   }
 
+  /**
+   * Resolve a fraud alert
+   */
   static async resolve(
     id: string,
     actingUserId: string,
@@ -556,6 +599,7 @@ export class FraudService {
       },
     });
 
+    // If it was a false positive, unflag the user
     if (isFalsePositive) {
       await prisma.user.update({
         where: { id: alert.userId },
@@ -566,6 +610,7 @@ export class FraudService {
         },
       });
 
+      // Unfreeze account if it was frozen
       if (alert.accountId) {
         await prisma.account.update({
           where: { id: alert.accountId },
@@ -584,6 +629,9 @@ export class FraudService {
     };
   }
 
+  /**
+   * Get fraud statistics
+   */
   static async getStats(actingUserId: string): Promise<FraudStats> {
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(actingUser.role)) {
@@ -592,6 +640,7 @@ export class FraudService {
 
     const totalAlerts = await prisma.fraudAlert.count();
 
+    // Group by risk level
     const byRiskLevel: Record<RiskLevel, number> = {
       LOW: 0,
       MEDIUM: 0,
@@ -607,6 +656,7 @@ export class FraudService {
       byRiskLevel[group.riskLevel as RiskLevel] = group._count._all;
     }
 
+    // Group by status
     const byStatus: Record<FraudStatus, number> = {
       PENDING: 0,
       COMPLETED: 0,
@@ -623,6 +673,7 @@ export class FraudService {
       byStatus[group.status as FraudStatus] = group._count._all;
     }
 
+    // Group by type
     const byType: Record<string, number> = {};
     const typeCounts = await prisma.fraudAlert.groupBy({
       by: ['riskLevel'],
@@ -633,6 +684,7 @@ export class FraudService {
       byType[group.riskLevel] = group._count._all;
     }
 
+    // Calculate flagged amounts using Decimal arithmetic
     const flaggedAlerts = await prisma.fraudAlert.findMany({
       where: { isSuspicious: true },
       select: { amount: true },
@@ -651,6 +703,7 @@ export class FraudService {
       .reduce((sum, a) => sum.plus(toDecimal(a.amount)), new Decimal(0))
       .toNumber();
 
+    // Calculate average response time
     const resolvedAlerts = await prisma.fraudAlert.findMany({
       where: { status: 'RESOLVED' },
       select: { createdAt: true, resolvedAt: true },
@@ -660,7 +713,7 @@ export class FraudService {
       ? resolvedAlerts.reduce((sum, a) => {
           if (a.resolvedAt) {
             const diff = a.resolvedAt.getTime() - a.createdAt.getTime();
-            return sum + diff / 1000;
+            return sum + diff / 1000; // Convert to seconds
           }
           return sum;
         }, 0) / resolvedAlerts.length
@@ -677,6 +730,9 @@ export class FraudService {
     };
   }
 
+  /**
+   * Get average transaction amount for a user using Decimal arithmetic
+   */
   private static async getAverageTransactionAmount(userId: string): Promise<Decimal> {
     const transactions = await prisma.transaction.findMany({
       where: { userId },
@@ -691,10 +747,15 @@ export class FraudService {
     return sum.div(transactions.length);
   }
 
+  /**
+   * Calculate distance between two locations (simplified)
+   */
   private static calculateDistance(loc1: string, loc2: string): number {
+    // In a real implementation, this would use geospatial calculations
+    // For now, return a simple distance based on location names
     if (loc1 === loc2) return 0;
     if (loc1.includes('Nigeria') && loc2.includes('Nigeria')) return 100;
     if (loc1.includes('US') && loc2.includes('US')) return 500;
-    return 1000;
+    return 1000; // Default distance for different countries
   }
 }
