@@ -50,19 +50,6 @@ export interface TransferListResult {
   totalPages: number;
 }
 
-export interface CreateTransferData {
-  senderAccountId: string;
-  recipientAccountId?: string;
-  recipientName?: string;
-  recipientBank?: string;
-  recipientAccountNumber?: string;
-  amount: number;
-  currency?: string;
-  description?: string;
-  scheduledFor?: string;
-  idempotencyKey?: string;
-}
-
 class TransfersApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
@@ -112,7 +99,7 @@ class TransfersApi {
     return (backendResponse as BackendSuccessResponse<Transfer>).data;
   }
 
-  async createTransfer(data: CreateTransferData): Promise<Transfer> {
+  async createTransfer(data: any): Promise<Transfer> {
     const token = this.getToken();
     const backendResponse = await apiClient.post<Transfer>('/api/transfers', data, token);
     if (!backendResponse.success) {
@@ -131,7 +118,7 @@ class TransfersApi {
   }
 
   // Admin methods
-  async getAllTransfers(params: TransferListParams & { userId?: string } = {}): Promise<TransferListResult> {
+  async getAllTransfers(params: any = {}): Promise<TransferListResult> {
     const token = this.getToken();
     const queryParams = new URLSearchParams();
     if (params.page) queryParams.append('page', params.page.toString());
