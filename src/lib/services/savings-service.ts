@@ -9,6 +9,7 @@ import {
   InsufficientBalanceError,
 } from '../utils/errors';
 import { LedgerService } from './ledger-service';
+import { Decimal } from '@prisma/client/runtime/library';
 import type {
   User,
   Account,
@@ -24,6 +25,41 @@ import type {
 } from '@prisma/client';
 
 // ============================================
+// DECIMAL UTILITIES
+// ============================================
+
+/**
+ * Convert amount to Decimal for safe financial arithmetic
+ * Accepts number, string, or Decimal
+ */
+function toDecimal(amount: number | string | Decimal): Decimal {
+  if (amount instanceof Decimal) {
+    return amount;
+  }
+  if (typeof amount === 'string') {
+    return new Decimal(amount);
+  }
+  // For numbers, convert to string first to avoid floating point precision loss
+  return new Decimal(amount.toString());
+}
+
+// ============================================
+// CONSTANTS
+// ============================================
+
+const SAVINGS_CONFIG = {
+  MIN_TARGET_AMOUNT: new Decimal(1),
+  MIN_CONTRIBUTION_AMOUNT: new Decimal(1),
+  MIN_WITHDRAWAL_AMOUNT: new Decimal(1),
+  MAX_DESCRIPTION_LENGTH: 500,
+  DEFAULT_INTEREST_RATE: new Decimal(0.05), // 5% annual
+  COMPOUND_FREQUENCY: 'MONTHLY' as const,
+  ALLOW_OVER_CONTRIBUTION: true,
+  ALLOW_EARLY_WITHDRAWAL: true,
+  IDEMPOTENCY_TTL: 24 * 60 * 60 * 1000, // 24 hours
+} as const;
+
+// ============================================
 // INTERFACES & TYPES
 // ============================================
 
@@ -31,14 +67,14 @@ export interface CreateSavingsGoalData {
   userId: string;
   name: string;
   description?: string;
-  targetAmount: number | string;
+  targetAmount: number | string | Decimal;
   targetDate?: Date;
 }
 
 export interface UpdateSavingsGoalData {
   name?: string;
   description?: string;
-  targetAmount?: number | string;
+  targetAmount?: number | string | Decimal;
   targetDate?: Date;
   status?: SavingsGoalStatus;
 }
@@ -46,7 +82,7 @@ export interface UpdateSavingsGoalData {
 export interface ContributeData {
   savingsGoalId: string;
   accountId: string;
-  amount: number | string;
+  amount: number | string | Decimal;
   description?: string;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
@@ -55,7 +91,7 @@ export interface ContributeData {
 export interface WithdrawData {
   savingsGoalId: string;
   accountId: string;
-  amount: number | string;
+  amount: number | string | Decimal;
   description?: string;
   idempotencyKey?: string;
   metadata?: Record<string, unknown>;
@@ -136,7 +172,7 @@ export interface InterestCalculation {
   savingsGoalId: string;
   startDate: Date;
   endDate: Date;
-  dailyRate: number;
+  dailyRate: number | string | Decimal;
   compoundFrequency: 'DAILY' | 'MONTHLY' | 'YEARLY';
 }
 
@@ -149,22 +185,6 @@ export interface InterestResult {
   totalAmount: number;
   compoundFrequency: string;
 }
-
-// ============================================
-// CONSTANTS
-// ============================================
-
-const SAVINGS_CONFIG = {
-  MIN_TARGET_AMOUNT: 1,
-  MIN_CONTRIBUTION_AMOUNT: 1,
-  MIN_WITHDRAWAL_AMOUNT: 1,
-  MAX_DESCRIPTION_LENGTH: 500,
-  DEFAULT_INTEREST_RATE: 0.05, // 5% annual
-  COMPOUND_FREQUENCY: 'MONTHLY' as const,
-  ALLOW_OVER_CONTRIBUTION: true,
-  ALLOW_EARLY_WITHDRAWAL: true,
-  IDEMPOTENCY_TTL: 24 * 60 * 60 * 1000, // 24 hours
-} as const;
 
 // ============================================
 // SAVINGS SERVICE
@@ -193,10 +213,12 @@ export class SavingsService {
       }
     }
 
-    // Validate inputs
-    const targetAmount = this.toDecimalNumber(data.targetAmount);
-    if (targetAmount < SAVINGS_CONFIG.MIN_TARGET_AMOUNT) {
-      throw new ValidationError(`Target amount must be at least ${SAVINGS_CONFIG.MIN_TARGET_AMOUNT}`);
+    // Validate inputs using Decimal
+    const targetAmount = toDecimal(data.targetAmount);
+    if (targetAmount.lessThan(SAVINGS_CONFIG.MIN_TARGET_AMOUNT)) {
+      throw new ValidationError(
+        `Target amount must be at least ${SAVINGS_CONFIG.MIN_TARGET_AMOUNT.toString()}`
+      );
     }
 
     // Check for duplicate goal name
@@ -214,7 +236,7 @@ export class SavingsService {
         name: data.name,
         description: data.description || null,
         targetAmount: targetAmount,
-        currentAmount: 0,
+        currentAmount: new Decimal(0),
         targetDate: data.targetDate || null,
         status: 'ACTIVE' as SavingsGoalStatus,
       },
@@ -238,7 +260,7 @@ export class SavingsService {
         action: 'CREATE',
         resourceType: 'SAVINGS_GOAL',
         resourceId: goal.id,
-        newValues: { userId: data.userId, name: data.name, targetAmount },
+        newValues: { userId: data.userId, name: data.name, targetAmount: targetAmount.toString() },
         status: 'SUCCESS',
       },
     });
@@ -454,14 +476,14 @@ export class SavingsService {
     }
 
     const oldStatus = goal.status;
-    const oldTargetAmount = goal.targetAmount;
+    const oldTargetAmount = toDecimal(goal.targetAmount);
 
     const updatedGoal = await prisma.savingsGoal.update({
       where: { id },
       data: {
         name: data.name,
         description: data.description,
-        targetAmount: data.targetAmount ? this.toDecimal(data.targetAmount) : undefined,
+        targetAmount: data.targetAmount ? toDecimal(data.targetAmount) : undefined,
         targetDate: data.targetDate,
         status: data.status,
       },
@@ -495,10 +517,10 @@ export class SavingsService {
         action: 'UPDATE',
         resourceType: 'SAVINGS_GOAL',
         resourceId: goal.id,
-        oldValues: { name: goal.name, targetAmount: oldTargetAmount, status: oldStatus },
+        oldValues: { name: goal.name, targetAmount: oldTargetAmount.toString(), status: oldStatus },
         newValues: {
           name: data.name || goal.name,
-          targetAmount: data.targetAmount || oldTargetAmount,
+          targetAmount: data.targetAmount ? toDecimal(data.targetAmount).toString() : oldTargetAmount.toString(),
           status: data.status || oldStatus,
         },
         status: 'SUCCESS',
@@ -535,7 +557,10 @@ export class SavingsService {
       throw new ValidationError('Goal is already completed');
     }
 
-    if (goal.currentAmount < Number(goal.targetAmount)) {
+    // Check if goal has reached target using Decimal comparison
+    const currentAmount = toDecimal(goal.currentAmount);
+    const targetAmount = toDecimal(goal.targetAmount);
+    if (currentAmount.lessThan(targetAmount)) {
       throw new ValidationError('Goal has not reached target amount');
     }
 
@@ -635,20 +660,21 @@ export class SavingsService {
       }
     }
 
-    // Validate amount
-    const amount = this.toDecimalNumber(data.amount);
-    if (amount < SAVINGS_CONFIG.MIN_CONTRIBUTION_AMOUNT) {
+    // Validate amount using Decimal
+    const amount = toDecimal(data.amount);
+    if (amount.lessThan(SAVINGS_CONFIG.MIN_CONTRIBUTION_AMOUNT)) {
       throw new ValidationError(
-        `Contribution amount must be at least ${SAVINGS_CONFIG.MIN_CONTRIBUTION_AMOUNT}`
+        `Contribution amount must be at least ${SAVINGS_CONFIG.MIN_CONTRIBUTION_AMOUNT.toString()}`
       );
     }
 
-    // Check sufficient balance
-    if (account.availableBalance < amount) {
+    // Check sufficient balance using Decimal comparison
+    const availableBalance = toDecimal(account.availableBalance);
+    if (availableBalance.lessThan(amount)) {
       throw new InsufficientBalanceError(
         account.id,
-        amount,
-        Number(account.availableBalance)
+        amount.toNumber(),
+        availableBalance.toNumber()
       );
     }
 
@@ -684,7 +710,7 @@ export class SavingsService {
       },
     });
 
-    // Update savings goal current amount
+    // Update savings goal current amount using Decimal arithmetic
     await prisma.savingsGoal.update({
       where: { id: data.savingsGoalId },
       data: {
@@ -697,7 +723,7 @@ export class SavingsService {
     // Create ledger entries
     await LedgerService.createJournal({
       reference: generateReference('SAV-CONT'),
-      description: `Savings contribution: ${amount} to ${goal.name}`,
+      description: `Savings contribution: ${amount.toString()} to ${goal.name}`,
       entries: [
         {
           accountId: data.accountId,
@@ -711,7 +737,7 @@ export class SavingsService {
       metadata: {
         contributionId: contribution.id,
         savingsGoalId: data.savingsGoalId,
-        amount,
+        amount: amount.toString(),
       },
     }, actingUserId);
 
@@ -725,7 +751,7 @@ export class SavingsService {
         newValues: {
           savingsGoalId: data.savingsGoalId,
           accountId: data.accountId,
-          amount,
+          amount: amount.toString(),
         },
         metadata: data.metadata,
         status: 'SUCCESS',
@@ -737,8 +763,12 @@ export class SavingsService {
       where: { id: data.savingsGoalId },
     });
 
-    if (updatedGoal && Number(updatedGoal.currentAmount) >= Number(updatedGoal.targetAmount)) {
-      await this.completeSavingsGoal(data.savingsGoalId, actingUserId);
+    if (updatedGoal) {
+      const updatedCurrent = toDecimal(updatedGoal.currentAmount);
+      const target = toDecimal(updatedGoal.targetAmount);
+      if (updatedCurrent.greaterThanOrEqual(target)) {
+        await this.completeSavingsGoal(data.savingsGoalId, actingUserId);
+      }
     }
 
     return this.formatContribution(contribution);
@@ -845,7 +875,7 @@ export class SavingsService {
     const total = await prisma.savingsContribution.count({ where });
 
     return {
-      contributions: contributions.map(this.formatContribution),
+      contributions: contributions.map(c => this.formatContribution(c)),
       total,
       page,
       limit,
@@ -894,20 +924,21 @@ export class SavingsService {
       }
     }
 
-    // Validate amount
-    const amount = this.toDecimalNumber(data.amount);
-    if (amount < SAVINGS_CONFIG.MIN_WITHDRAWAL_AMOUNT) {
+    // Validate amount using Decimal
+    const amount = toDecimal(data.amount);
+    if (amount.lessThan(SAVINGS_CONFIG.MIN_WITHDRAWAL_AMOUNT)) {
       throw new ValidationError(
-        `Withdrawal amount must be at least ${SAVINGS_CONFIG.MIN_WITHDRAWAL_AMOUNT}`
+        `Withdrawal amount must be at least ${SAVINGS_CONFIG.MIN_WITHDRAWAL_AMOUNT.toString()}`
       );
     }
 
-    // Check sufficient savings balance
-    if (Number(goal.currentAmount) < amount) {
+    // Check sufficient savings balance using Decimal comparison
+    const currentAmount = toDecimal(goal.currentAmount);
+    if (currentAmount.lessThan(amount)) {
       throw new InsufficientBalanceError(
         `Savings Goal ${goal.id}`,
-        amount,
-        Number(goal.currentAmount)
+        amount.toNumber(),
+        currentAmount.toNumber()
       );
     }
 
@@ -943,7 +974,7 @@ export class SavingsService {
       },
     });
 
-    // Update savings goal current amount
+    // Update savings goal current amount using Decimal arithmetic
     await prisma.savingsGoal.update({
       where: { id: data.savingsGoalId },
       data: {
@@ -956,7 +987,7 @@ export class SavingsService {
     // Create ledger entries
     await LedgerService.createJournal({
       reference: generateReference('SAV-WTH'),
-      description: `Savings withdrawal: ${amount} from ${goal.name}`,
+      description: `Savings withdrawal: ${amount.toString()} from ${goal.name}`,
       entries: [
         {
           accountId: data.accountId,
@@ -970,7 +1001,7 @@ export class SavingsService {
       metadata: {
         withdrawalId: withdrawal.id,
         savingsGoalId: data.savingsGoalId,
-        amount,
+        amount: amount.toString(),
       },
     }, actingUserId);
 
@@ -984,7 +1015,7 @@ export class SavingsService {
         newValues: {
           savingsGoalId: data.savingsGoalId,
           accountId: data.accountId,
-          amount,
+          amount: amount.toString(),
         },
         metadata: data.metadata,
         status: 'SUCCESS',
@@ -1095,7 +1126,7 @@ export class SavingsService {
     const total = await prisma.savingsWithdrawal.count({ where });
 
     return {
-      withdrawals: withdrawals.map(this.formatWithdrawal),
+      withdrawals: withdrawals.map(w => this.formatWithdrawal(w)),
       total,
       page,
       limit,
@@ -1120,28 +1151,28 @@ export class SavingsService {
     const totalContributions = await prisma.savingsContribution.count();
     const totalWithdrawals = await prisma.savingsWithdrawal.count();
 
-    // Calculate total saved
+    // Calculate total saved using Decimal arithmetic
     const contributions = await prisma.savingsContribution.findMany({
       select: { amount: true },
     });
 
-    const totalSaved = contributions.reduce((sum, c) => sum + Number(c.amount), 0);
+    const totalSaved = contributions.reduce((sum, c) => sum.plus(toDecimal(c.amount)), new Decimal(0)).toNumber();
 
-    // Calculate total target
+    // Calculate total target using Decimal arithmetic
     const goals = await prisma.savingsGoal.findMany({
       select: { targetAmount: true },
     });
 
-    const totalTarget = goals.reduce((sum, g) => sum + Number(g.targetAmount), 0);
+    const totalTarget = goals.reduce((sum, g) => sum.plus(toDecimal(g.targetAmount)), new Decimal(0)).toNumber();
 
-    // Calculate average progress
+    // Calculate average progress using Decimal arithmetic
     const goalsWithProgress = await prisma.savingsGoal.findMany({
       select: { currentAmount: true, targetAmount: true },
     });
 
     const progressPercentages = goalsWithProgress
-      .filter(g => Number(g.targetAmount) > 0)
-      .map(g => (Number(g.currentAmount) / Number(g.targetAmount)) * 100);
+      .filter(g => toDecimal(g.targetAmount).greaterThan(0))
+      .map(g => toDecimal(g.currentAmount).div(toDecimal(g.targetAmount)).times(100).toNumber());
 
     const averageProgress = progressPercentages.length > 0
       ? progressPercentages.reduce((a, b) => a + b, 0) / progressPercentages.length
@@ -1163,7 +1194,7 @@ export class SavingsService {
       byStatus[goal.status]++;
     }
 
-    // Get top goals
+    // Get top goals using Decimal arithmetic for sorting
     const sortedGoals = await prisma.savingsGoal.findMany({
       orderBy: { currentAmount: 'desc' },
       take: 10,
@@ -1175,13 +1206,18 @@ export class SavingsService {
       },
     });
 
-    const topGoals = sortedGoals.map(g => ({
-      goalId: g.id,
-      name: g.name,
-      currentAmount: Number(g.currentAmount),
-      targetAmount: Number(g.targetAmount),
-      progressPercent: g.targetAmount > 0 ? (Number(g.currentAmount) / Number(g.targetAmount)) * 100 : 0,
-    }));
+    const topGoals = sortedGoals.map(g => {
+      const current = toDecimal(g.currentAmount);
+      const target = toDecimal(g.targetAmount);
+      const progressPercent = target.greaterThan(0) ? current.div(target).times(100).toNumber() : 0;
+      return {
+        goalId: g.id,
+        name: g.name,
+        currentAmount: current.toNumber(),
+        targetAmount: target.toNumber(),
+        progressPercent,
+      };
+    });
 
     return {
       totalGoals,
@@ -1196,157 +1232,71 @@ export class SavingsService {
   }
 
   // ============================================
-  // INTEREST CALCULATION
+  // FORMATTERS
   // ============================================
-
-  /**
-   * Calculate interest for a savings goal (compound interest)
-   */
-  static async calculateInterest(
-    data: InterestCalculation,
-    actingUserId: string
-  ): Promise<InterestResult> {
-    const goal = await prisma.savingsGoal.findUnique({ where: { id: data.savingsGoalId } });
-    if (!goal) throw new NotFoundError('Savings Goal', data.savingsGoalId);
-
-    // Authorization check
-    if (actingUserId !== goal.userId) {
-      const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
-      if (!actingUser || !['ADMIN', 'SUPER_ADMIN'].includes(actingUser.role)) {
-        throw new ForbiddenError('You do not have access to this savings goal');
-      }
-    }
-
-    const principal = Number(goal.currentAmount);
-    const dailyRate = data.dailyRate;
-    const startDate = data.startDate;
-    const endDate = data.endDate;
-
-    // Calculate number of days
-    const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-
-    // Calculate compound interest
-    let interestEarned = 0;
-    let compoundFrequency = data.compoundFrequency;
-
-    switch (compoundFrequency) {
-      case 'DAILY':
-        interestEarned = principal * Math.pow(1 + dailyRate, days) - principal;
-        break;
-      case 'MONTHLY':
-        const months = days / 30;
-        const monthlyRate = Math.pow(1 + dailyRate, 30) - 1;
-        interestEarned = principal * Math.pow(1 + monthlyRate, months) - principal;
-        break;
-      case 'YEARLY':
-        const years = days / 365;
-        const yearlyRate = Math.pow(1 + dailyRate, 365) - 1;
-        interestEarned = principal * Math.pow(1 + yearlyRate, years) - principal;
-        break;
-    }
-
-    const totalAmount = principal + interestEarned;
-
-    return {
-      savingsGoalId: data.savingsGoalId,
-      startDate,
-      endDate,
-      principal,
-      interestEarned,
-      totalAmount,
-      compoundFrequency,
-    };
-  }
-
-  // ============================================
-  // HELPER METHODS
-  // ============================================
-
-  /**
-   * Convert amount to Decimal (Prisma Decimal type)
-   */
-  private static toDecimal(amount: number | string): number {
-    if (typeof amount === 'string') {
-      return parseFloat(amount);
-    }
-    return amount;
-  }
-
-  /**
-   * Convert amount to number for calculations
-   */
-  private static toDecimalNumber(amount: number | string): number {
-    return typeof amount === 'string' ? parseFloat(amount) : amount;
-  }
 
   /**
    * Format savings goal with calculated values
    */
-  private static formatGoal(goal: SavingsGoal & {
-    user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'>;
-    contributions: SavingsContribution[];
-    withdrawals: SavingsWithdrawal[];
-  }): SavingsGoalResult['goal'] {
-    const targetAmount = Number(goal.targetAmount);
-    const currentAmount = Number(goal.currentAmount);
-
-    const progressPercent = targetAmount > 0 ? (currentAmount / targetAmount) * 100 : 0;
-    const remainingAmount = targetAmount - currentAmount;
+  private static async formatGoal(
+    goal: SavingsGoal & {
+      user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'>;
+      contributions: SavingsContribution[];
+      withdrawals: SavingsWithdrawal[];
+    }
+  ): Promise<SavingsGoalResult> {
+    const currentAmount = toDecimal(goal.currentAmount);
+    const targetAmount = toDecimal(goal.targetAmount);
+    const progressPercent = targetAmount.greaterThan(0) 
+      ? currentAmount.div(targetAmount).times(100).toNumber()
+      : 0;
+    const remainingAmount = targetAmount.minus(currentAmount).toNumber();
 
     // Calculate days remaining
     let daysRemaining: number | null = null;
     if (goal.targetDate) {
       const now = new Date();
-      const diff = goal.targetDate.getTime() - now.getTime();
-      daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
-      if (daysRemaining < 0) daysRemaining = 0;
+      const targetDate = new Date(goal.targetDate);
+      daysRemaining = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      daysRemaining = daysRemaining > 0 ? daysRemaining : null;
     }
 
     return {
-      ...goal,
-      user: goal.user,
-      contributions: goal.contributions,
-      withdrawals: goal.withdrawals,
-      progressPercent,
-      currentAmount,
-      remainingAmount,
-      daysRemaining,
+      goal: {
+        ...goal,
+        progressPercent,
+        currentAmount: currentAmount.toNumber(),
+        remainingAmount,
+        daysRemaining,
+      },
     };
   }
 
   /**
-   * Format contribution with related data
+   * Format contribution for output
    */
-  private static formatContribution(contribution: SavingsContribution & {
-    savingsGoal: Pick<SavingsGoal, 'id' | 'name' | 'userId'>;
-    account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
-    journal?: Journal | null;
-    transaction?: Transaction | null;
-  }): ContributionResult['contribution'] {
-    return {
-      ...contribution,
-      savingsGoal: contribution.savingsGoal,
-      account: contribution.account,
-      journal: contribution.journal || null,
-      transaction: contribution.transaction || null,
-    };
+  private static formatContribution(
+    contribution: SavingsContribution & {
+      savingsGoal: Pick<SavingsGoal, 'id' | 'name' | 'userId'>;
+      account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
+      journal?: Journal | null;
+      transaction?: Transaction | null;
+    }
+  ): ContributionResult {
+    return { contribution };
   }
 
   /**
-   * Format withdrawal with related data
+   * Format withdrawal for output
    */
-  private static formatWithdrawal(withdrawal: SavingsWithdrawal & {
-    savingsGoal: Pick<SavingsGoal, 'id' | 'name' | 'userId'>;
-    account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
-    journal?: Journal | null;
-    transaction?: Transaction | null;
-  }): WithdrawalResult['withdrawal'] {
-    return {
-      ...withdrawal,
-      savingsGoal: withdrawal.savingsGoal,
-      account: withdrawal.account,
-      journal: withdrawal.journal || null,
-      transaction: withdrawal.transaction || null,
-    };
+  private static formatWithdrawal(
+    withdrawal: SavingsWithdrawal & {
+      savingsGoal: Pick<SavingsGoal, 'id' | 'name' | 'userId'>;
+      account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
+      journal?: Journal | null;
+      transaction?: Transaction | null;
+    }
+  ): WithdrawalResult {
+    return { withdrawal };
   }
 }
