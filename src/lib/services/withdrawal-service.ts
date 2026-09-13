@@ -1,12 +1,27 @@
 import { prisma } from '../prisma';
 import { ForbiddenError, NotFoundError, ValidationError, InsufficientBalanceError, AccountFrozenError } from '../utils/errors';
 import { generateReference, generateIdempotencyKey } from '../utils/security';
+import { Decimal } from '@prisma/client/runtime/library';
 import type { Withdrawal, WithdrawalMethod, WithdrawalStatus, RiskStatus, User, Account, Journal } from '@prisma/client';
+
+/**
+ * Convert amount to Decimal for safe financial arithmetic
+ * Accepts number, string, or Decimal
+ */
+function toDecimal(amount: number | string | Decimal): Decimal {
+  if (amount instanceof Decimal) {
+    return amount;
+  }
+  if (typeof amount === 'string') {
+    return new Decimal(amount);
+  }
+  return new Decimal(amount.toString());
+}
 
 export interface CreateWithdrawalData {
   userId: string;
   accountId: string;
-  amount: number;
+  amount: number | string | Decimal;
   currency?: string;
   method: WithdrawalMethod;
   destination?: string;
@@ -28,8 +43,20 @@ export class WithdrawalService {
     if (account.userId !== data.userId) throw new ForbiddenError('Account does not belong to user');
     if (account.status !== 'ACTIVE') throw new AccountFrozenError(data.accountId);
     if (account.status === 'FROZEN') throw new AccountFrozenError(data.accountId);
-    if (data.amount <= 0) throw new ValidationError('Amount must be positive');
-    if (account.availableBalance < data.amount) throw new InsufficientBalanceError(account.id, data.amount, account.availableBalance.toNumber());
+    
+    const amountDecimal = toDecimal(data.amount);
+    
+    if (amountDecimal.lessThanOrEqual(new Decimal(0))) throw new ValidationError('Amount must be positive');
+    
+    const availableBalanceDecimal = toDecimal(account.availableBalance);
+    if (availableBalanceDecimal.lessThan(amountDecimal)) {
+      throw new InsufficientBalanceError(
+        account.id,
+        amountDecimal.toNumber(),
+        availableBalanceDecimal.toNumber()
+      );
+    }
+    
     if (data.idempotencyKey) {
       const existing = await prisma.withdrawal.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
       if (existing) return { withdrawal: existing };
@@ -42,7 +69,7 @@ export class WithdrawalService {
           reference,
           userId: data.userId,
           accountId: data.accountId,
-          amount: data.amount,
+          amount: amountDecimal,
           currency: data.currency || 'USD',
           method: data.method,
           destination: data.destination,
@@ -62,20 +89,24 @@ export class WithdrawalService {
           withdrawalId: withdrawal.id,
         },
       });
+      
+      const accountBalance = toDecimal(account.balance);
+      const newBalance = accountBalance.minus(amountDecimal);
+      
       await tx.ledgerEntry.create({
         data: {
           journalId: journal.id,
           accountId: data.accountId,
           entryType: 'DEBIT' as const,
-          amount: data.amount,
-          balance: account.balance.toNumber() - data.amount,
+          amount: amountDecimal,
+          balance: newBalance,
           description: `Withdrawal ${reference}`,
           transactionId: null,
         },
       });
       await tx.account.update({
         where: { id: data.accountId },
-        data: { balance: { decrement: data.amount }, availableBalance: { decrement: data.amount } },
+        data: { balance: { decrement: amountDecimal }, availableBalance: { decrement: amountDecimal } },
       });
       const updatedWithdrawal = await tx.withdrawal.update({
         where: { id: withdrawal.id },
@@ -88,7 +119,7 @@ export class WithdrawalService {
           action: 'CREATE',
           resourceType: 'WITHDRAWAL',
           resourceId: withdrawal.id,
-          newValues: { reference, accountId: data.accountId, amount: data.amount, method: data.method },
+          newValues: { reference, accountId: data.accountId, amount: amountDecimal.toString(), method: data.method },
           status: 'SUCCESS',
         },
       });
