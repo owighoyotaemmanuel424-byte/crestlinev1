@@ -275,7 +275,7 @@ export class AMLService {
           data: {
             userId: admin.id,
             title: 'AML Approval Required',
-            message: 'AML check requires approval for user ' + user.email + ' - Amount: ' + amount.toString() + ' ' + (data.currency || 'USD'),
+            message: `AML check requires approval for user ${user.email} - Amount: ${amount.toString()} ${data.currency || 'USD'}`,
             type: 'WARNING',
             category: 'COMPLIANCE',
             isRead: false,
@@ -372,7 +372,7 @@ export class AMLService {
       data: {
         userId: check.userId,
         title: 'AML Check Approved',
-        message: 'Your AML check has been approved. Reference: ' + check.id,
+        message: `Your AML check has been approved. Reference: ${check.id}`,
         type: 'SUCCESS',
         category: 'COMPLIANCE',
         isRead: false,
@@ -462,7 +462,7 @@ export class AMLService {
       data: {
         userId: check.userId,
         title: 'AML Check Rejected',
-        message: 'Your AML check has been rejected. Reason: ' + reason,
+        message: `Your AML check has been rejected. Reason: ${reason}`,
         type: 'ERROR',
         category: 'COMPLIANCE',
         isRead: false,
