@@ -1,7 +1,7 @@
 // src/lib/api/deposits.ts
 // Deposit API client
 
-import { apiClient } from './client';
+import { apiClient, BackendResponse, BackendSuccessResponse } from './client';
 
 export interface Deposit {
   id: string;
@@ -51,25 +51,6 @@ export interface CreateDepositData {
   idempotencyKey?: string;
 }
 
-// Backend response types
-interface BackendPaginatedResponse<T> {
-  success: boolean;
-  data: T[];
-  meta: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-    hasPrevPage: boolean;
-  };
-}
-
-interface BackendSuccessResponse<T> {
-  success: boolean;
-  data: T;
-}
-
 class DepositsApi {
   private getToken(): string | null {
     if (typeof window !== 'undefined') {
@@ -79,15 +60,14 @@ class DepositsApi {
   }
 
   private transformPaginatedResponse<T>(
-    backendResponse: BackendPaginatedResponse<T>,
-    fieldName: string
-  ): { [key: string]: T[] } & { total: number; page: number; limit: number; totalPages: number } {
+    backendResponse: BackendSuccessResponse<T[]>
+  ): { deposits: T[]; total: number; page: number; limit: number; totalPages: number } {
     return {
-      [fieldName]: backendResponse.data,
-      total: backendResponse.meta.total,
-      page: backendResponse.meta.page,
-      limit: backendResponse.meta.limit,
-      totalPages: backendResponse.meta.totalPages,
+      deposits: backendResponse.data,
+      total: backendResponse.meta?.total || 0,
+      page: backendResponse.meta?.page || 1,
+      limit: backendResponse.meta?.limit || 20,
+      totalPages: backendResponse.meta?.totalPages || 1,
     };
   }
 
@@ -104,20 +84,29 @@ class DepositsApi {
     if (params.endDate) queryParams.append('endDate', params.endDate);
     
     const endpoint = `/api/deposits?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Deposit>>(endpoint, token);
-    return this.transformPaginatedResponse<Deposit>(backendResponse, 'deposits') as DepositListResult;
+    const backendResponse = await apiClient.get<Deposit[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Deposit>(backendResponse as BackendSuccessResponse<Deposit[]>);
   }
 
   async getDepositById(id: string): Promise<Deposit> {
     const token = this.getToken();
-    const backendResponse = await apiClient.get<BackendSuccessResponse<Deposit>>(`/api/deposits/${id}`, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.get<Deposit>(`/api/deposits/${id}`, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Deposit>).data;
   }
 
   async createDeposit(data: CreateDepositData): Promise<Deposit> {
     const token = this.getToken();
-    const backendResponse = await apiClient.post<BackendSuccessResponse<Deposit>>('/api/deposits', data, token);
-    return backendResponse.data;
+    const backendResponse = await apiClient.post<Deposit>('/api/deposits', data, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return (backendResponse as BackendSuccessResponse<Deposit>).data;
   }
 
   // Admin methods
@@ -135,8 +124,11 @@ class DepositsApi {
     if (params.endDate) queryParams.append('endDate', params.endDate);
     
     const endpoint = `/api/admin/deposits?${queryParams.toString()}`;
-    const backendResponse = await apiClient.get<BackendPaginatedResponse<Deposit>>(endpoint, token);
-    return this.transformPaginatedResponse<Deposit>(backendResponse, 'deposits') as DepositListResult;
+    const backendResponse = await apiClient.get<Deposit[]>(endpoint, token);
+    if (!backendResponse.success) {
+      throw backendResponse;
+    }
+    return this.transformPaginatedResponse<Deposit>(backendResponse as BackendSuccessResponse<Deposit[]>);
   }
 }
 
