@@ -1,18 +1,18 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { Decimal } from '@prisma/client/runtime/library';
+type DecimalLike = { toNumber(): number };
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
 // Format currency - now supports Decimal for precise monetary calculations
-export function formatCurrency(amount: Decimal | number | string, currency: string = 'USD'): string {
+export function formatCurrency(amount: DecimalLike | number | string, currency: string = 'USD'): string {
   // Convert Decimal to number for formatting
-  const num = amount instanceof Decimal 
-    ? amount.toNumber() 
-    : typeof amount === 'string' 
-      ? parseFloat(amount) 
+  const num = typeof amount === 'object' && amount !== null && 'toNumber' in amount
+    ? amount.toNumber()
+    : typeof amount === 'string'
+      ? parseFloat(amount)
       : amount;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',

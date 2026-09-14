@@ -1715,7 +1715,7 @@ export class SupportService {
     const ticketsWithMessages = await prisma.supportTicket.findMany({
       where: {
         status: { in: ['RESOLVED', 'CLOSED'] },
-        messages: { some: { sender: { role: { in: ['SUPPORT', 'ADMIN', 'SUPER_ADMIN'] } } },
+        messages: { some: { sender: { role: { in: ['SUPPORT', 'ADMIN', 'SUPER_ADMIN'] } } } },
       },
       include: {
         messages: {
