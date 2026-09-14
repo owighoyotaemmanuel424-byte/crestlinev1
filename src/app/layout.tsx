@@ -1,13 +1,10 @@
 'use client';
 
-import { Inter } from 'next/font/google';
 import './globals.css';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from '@/lib/auth';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export default function RootLayout({
   children,
@@ -118,7 +115,7 @@ export default function RootLayout({
   if (loading) {
     return (
       <html lang="en">
-        <body className={`${inter.className} bg-[#0b0f19] text-white min-h-screen`}>
+        <body className={`font-sans bg-[#0b0f19] text-white min-h-screen`}>
           <div className="flex items-center justify-center min-h-screen">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
           </div>
@@ -130,7 +127,7 @@ export default function RootLayout({
   if (isAuthRoute || isPublicRoute) {
     return (
       <html lang="en">
-        <body className={`${inter.className} bg-[#0b0f19] text-white min-h-screen`}>
+        <body className={`font-sans bg-[#0b0f19] text-white min-h-screen`}>
           <header className="sticky top-0 bg-[#0b0f19]/80 backdrop-blur-sm z-50 border-b border-blue-500/10">
             <div className="container mx-auto px-4 py-4">
               <div className="flex items-center justify-between">
@@ -192,7 +189,7 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-[#0b0f19] text-white min-h-screen`}>
+      <body className={`font-sans bg-[#0b0f19] text-white min-h-screen`}>
         {shouldShowSidebar && (
           <aside
             className={`fixed top-0 left-0 w-64 h-full bg-[#121828] border-r border-blue-500/10 z-40 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}

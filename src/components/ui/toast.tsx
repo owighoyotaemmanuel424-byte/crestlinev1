@@ -3,7 +3,7 @@
 // src/components/ui/toast.tsx
 // Toast notification component
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 type ToastType = 'success' | 'error' | 'warning' | 'info' | 'loading';
@@ -123,7 +123,6 @@ const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onRemove, posit
 };
 
 // Toast context and provider
-import { createContext, useContext, useState, ReactNode } from 'react';
 
 interface ToastContextType {
   addToast: (toast: Omit<ToastMessage, 'id'>) => string;
@@ -206,5 +205,3 @@ export const useToast = (): ToastContextType => {
   }
   return context;
 };
-
-export { ToastProvider, useToast };
