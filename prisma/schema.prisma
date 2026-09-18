@@ -79,6 +79,7 @@ enum Role {
 model Session {
 
 
+
   id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       String
@@ -151,7 +152,8 @@ enum AccountStatus {
 model Journal {
   id          String   @id @default(cuid())
   reference   String   @unique
-  description Stri
+  description Str
+i
 n
 g
   date        DateTime @default(now())
@@ -225,7 +227,8 @@ model Transaction {
   category        String?
   metadata        Json?
   createdAt       DateTime     @default(now())
-  updatedAt 
+  updatedA
+t 
   
     DateTime     @updatedAt
 
@@ -310,7 +313,8 @@ model Transfer {
   fromAccountId   String
   fromAccount     Account      @relation("AccountTransfersFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
   toAccountId     String
-  toAccount       Account      @relation("AccountTransfersTo", f
+  toAccount       Account      @relation("AccountTransfersTo"
+, f
 iel
 ds: [toAccountId], references: [id], onDelete: Cascade)
   amount          Decimal      @db.Decimal(20, 2)
@@ -380,7 +384,8 @@ model Deposit {
   idempotencyKey  String?      @unique
   metadata        Json?
   createdAt       DateTime     @default(now())
-  updatedAt       Date
+  updatedAt       
+Date
 Time
      @updatedAt
 
@@ -459,7 +464,8 @@ model Withdrawal {
   @@index([createdAt])
 }
 
-enum WithdrawalMetho
+enum Withdrawal
+Metho
 d {
  
  ACH
@@ -542,7 +548,8 @@ model Card {
   status          CardStatus @default(ACTIVE)
   isDefault       Boolean  @default(false)
   dailyLimit      Decimal  @default(5000) @db.Decimal(20, 2)
-  monthlyLimit    Decimal  @default(50000
+  monthlyLimit    Decimal  @default
+(50000
 ) @db.
 Decimal(20, 2)
   provider        String?
@@ -639,7 +646,8 @@ model KYCDocument {
   kycProfile      KYCProfile @relation(fields: [kycProfileId], references: [id], onDelete: Cascade)
   documentType    KYCDocumentType
   fileName        String
-  fileUrl  
+  fi
+leUrl  
        
 String
   fileSize        Int
@@ -716,7 +724,8 @@ model LoanApplication {
   @@index([userId])
   @@index([reference])
   @@index([status])
-  @@index([createdAt])
+  @@index([created
+At])
 }
 
 
@@ -782,7 +791,8 @@ model LoanRepayment {
 
   @@index([loanApplicationId])
   @@index([accountId])
-  @@index([paymentDate
+  @@index([pa
+ymentDate
 ])
   @@in
 dex([status])
@@ -871,7 +881,8 @@ model InvestmentTransaction {
   portfolioId     String
   portfolio       InvestmentPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   investmentId    String
-  investment      Investment @rel
+  investment      Inves
+tment @rel
 ation(fiel
 ds: [investmentId], references: [id], onDelete: Cascade)
   accountId       String
@@ -943,7 +954,8 @@ enum SavingsGoalStatus {
 model SavingsContribution {
   id              String   @id @default(cuid())
   savingsGoalId   String
-  savingsGoal     SavingsGoal @relation(fields: [savingsGoalId], references: [id], onDelete: Cascade)
+  savingsGoal     SavingsGoal @relation(fields: [savingsGoalId], references: [id], onDelete:
+ Cascade)
  
  accountId 
       String
@@ -1007,7 +1019,8 @@ model SupportTicket {
   description     String
   status          SupportTicketStatus @default(OPEN)
   assignedToId    String?
-  assignedTo      User?    @relation(fields: [assi
+  assignedTo      User?    @relation(f
+ields: [assi
 gnedToId], r
 eferences: [id])
   resolvedAt      DateTime?
@@ -1096,7 +1109,8 @@ model SupportAttachment {
   @@index([messageId])
 }
 
-// ============================================
+// ======================================
+======
 // NOT
 IFICATIONS
 //
@@ -1177,7 +1191,8 @@ model Profile {
   avatarUrl       String?
   bio             String?
   preferredLanguage String @default("en")
-  timezone        String   @default("
+  timezone        Strin
+g   @default("
 UTC")
   notificationPreferences Json @default("{\"email\": true, \"push\": true, \"sms\": false}")
   privacySettings Json @default("{\"showBalance\": true, \"showTransactions\": true}")
@@ -1218,7 +1233,8 @@ model AuditLog {
   beneficiary     Beneficiary? @relation("BeneficiaryAuditLogs", fields: [resourceId], references: [id])
   kycProfile      KYCProfile? @relation("KYCAuditLogs", fields: [resourceId], references: [id])
   kycDocument     KYCDocument? @relation("KYCDocumentAuditLogs", fields: [resourceId], references: [id])
-  loanApplication LoanApplication? @relation("LoanA
+  loanApplication Loan
+Application? @relation("LoanA
 pplicationAuditLogs", fields: [resourceId], references: [id])
   loanDisbursement LoanDisbursement? @relation("LoanDisbursemen
 tAuditLogs", fields: [resourceId], references: [id])
@@ -1226,6 +1242,6 @@ tAuditLogs", fields: [resourceId], references: [id])
   investmentPortfolio InvestmentPortfolio? @relation("InvestmentPortfolioAuditLogs", fields: [resourceId], references: [id])
   savingsGoal     SavingsGoal? @relation("SavingsGoalAuditLogs", fields: [resourceId], references: [id])
   savingsContribution SavingsContribution? @relation("SavingsContributionAuditLogs", fields: [resourceId], references: [id])
-  savingsWithdrawal SavingsWithdrawal? @relation("SavingsWithdrawalAuditLogs", fields: [resourceId], referen
+  savingsWithdrawal SavingsWithdrawal? @relation("SavingsWithdrawalAuditLogs",
 
 ... [Content truncated]
