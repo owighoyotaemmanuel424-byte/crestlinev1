@@ -77,6 +77,7 @@ enum Role {
 }
 
 model Session {
+
   id           String   @id @default(cuid())
   sessionToken String   @unique
   userId       String
@@ -149,7 +150,8 @@ enum AccountStatus {
 model Journal {
   id          String   @id @default(cuid())
   reference   String   @unique
-  description String
+  description Strin
+g
   date        DateTime @default(now())
   status      JournalStatus @default(POSTED)
   createdAt   DateTime @default(now())
@@ -221,7 +223,8 @@ model Transaction {
   category        String?
   metadata        Json?
   createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  updatedAt   
+    DateTime     @updatedAt
 
   // Relations
   journal         Journal?     @relation(fields: [journalId], references: [id])
@@ -304,7 +307,8 @@ model Transfer {
   fromAccountId   String
   fromAccount     Account      @relation("AccountTransfersFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
   toAccountId     String
-  toAccount       Account      @relation("AccountTransfersTo", fields: [toAccountId], references: [id], onDelete: Cascade)
+  toAccount       Account      @relation("AccountTransfersTo", fiel
+ds: [toAccountId], references: [id], onDelete: Cascade)
   amount          Decimal      @db.Decimal(20, 2)
   currency        String       @default("USD")
   description     String?
@@ -372,7 +376,8 @@ model Deposit {
   idempotencyKey  String?      @unique
   metadata        Json?
   createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  updatedAt       DateTime
+     @updatedAt
 
   // Relations
   journal         Journal?     @relation(fields: [journalId], references: [id])
@@ -450,7 +455,8 @@ model Withdrawal {
 }
 
 enum WithdrawalMethod {
-  ACH
+ 
+ ACH
   WIRE
   CARD
   CASH
@@ -530,7 +536,8 @@ model Card {
   status          CardStatus @default(ACTIVE)
   isDefault       Boolean  @default(false)
   dailyLimit      Decimal  @default(5000) @db.Decimal(20, 2)
-  monthlyLimit    Decimal  @default(50000) @db.Decimal(20, 2)
+  monthlyLimit    Decimal  @default(50000) @db.
+Decimal(20, 2)
   provider        String?
   providerReference String?
   metadata        Json?
@@ -625,7 +632,8 @@ model KYCDocument {
   kycProfile      KYCProfile @relation(fields: [kycProfileId], references: [id], onDelete: Cascade)
   documentType    KYCDocumentType
   fileName        String
-  fileUrl         String
+  fileUrl         
+String
   fileSize        Int
   mimeType        String
   status          DocumentStatus @default(PENDING)
@@ -703,7 +711,8 @@ model LoanApplication {
   @@index([createdAt])
 }
 
-enum LoanApplicationStatus {
+enum Loa
+nApplicationStatus {
   DRAFT
   SUBMITTED
   UNDER_REVIEW
@@ -765,7 +774,8 @@ model LoanRepayment {
   @@index([loanApplicationId])
   @@index([accountId])
   @@index([paymentDate])
-  @@index([status])
+  @@in
+dex([status])
 }
 
 enum RepaymentStatus {
@@ -851,7 +861,8 @@ model InvestmentTransaction {
   portfolioId     String
   portfolio       InvestmentPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   investmentId    String
-  investment      Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  investment      Investment @relation(fiel
+ds: [investmentId], references: [id], onDelete: Cascade)
   accountId       String
   account         Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactionType InvestmentTransactionType
@@ -922,7 +933,8 @@ model SavingsContribution {
   id              String   @id @default(cuid())
   savingsGoalId   String
   savingsGoal     SavingsGoal @relation(fields: [savingsGoalId], references: [id], onDelete: Cascade)
-  accountId       String
+  accountId 
+      String
   account         Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
   amount          Decimal @db.Decimal(20, 2)
   description     String?
@@ -983,7 +995,8 @@ model SupportTicket {
   description     String
   status          SupportTicketStatus @default(OPEN)
   assignedToId    String?
-  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
+  assignedTo      User?    @relation(fields: [assignedToId], r
+eferences: [id])
   resolvedAt      DateTime?
   resolvedById    String?
   resolvedBy      User?    @relation(fields: [resolvedById], references: [id])
@@ -1072,7 +1085,8 @@ model SupportAttachment {
 
 // ============================================
 // NOTIFICATIONS
-// ============================================
+//
+ ============================================
 
 model Notification {
   id              String   @id @default(cuid())
@@ -1150,8 +1164,9 @@ model Profile {
   bio             String?
   preferredLanguage String @default("en")
   timezone        String   @default("UTC")
-  notificationPreferences Json @default({"email": true, "push": true, "sms": false})
-  privacySettings Json @default({"showBalance": true, "showTransactions": true})
+  notifi
+cationPreferences Json @default({"email": true, "push": true, "sms": false})
+  privacySettings Json @default({showBalance: true, showTransactions: true})
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -1187,247 +1202,14 @@ model AuditLog {
   kycProfile      KYCProfile? @relation("KYCAuditLogs", fields: [resourceId], references: [id])
   kycDocument     KYCDocument? @relation("KYCDocumentAuditLogs", fields: [resourceId], references: [id])
   loanApplication LoanApplication? @relation("LoanApplicationAuditLogs", fields: [resourceId], references: [id])
-  loanDisbursement LoanDisbursement? @relation("LoanDisbursementAuditLogs", fields: [resourceId], references: [id])
+  loanDisbursement LoanDisbursement? @relation("LoanDisbursemen
+tAuditLogs", fields: [resourceId], references: [id])
   loanRepayment    LoanRepayment? @relation("LoanRepaymentAuditLogs", fields: [resourceId], references: [id])
   investmentPortfolio InvestmentPortfolio? @relation("InvestmentPortfolioAuditLogs", fields: [resourceId], references: [id])
   savingsGoal     SavingsGoal? @relation("SavingsGoalAuditLogs", fields: [resourceId], references: [id])
   savingsContribution SavingsContribution? @relation("SavingsContributionAuditLogs", fields: [resourceId], references: [id])
   savingsWithdrawal SavingsWithdrawal? @relation("SavingsWithdrawalAuditLogs", fields: [resourceId], references: [id])
   supportTicket   SupportTicket? @relation("SupportTicketAuditLogs", fields: [resourceId], references: [id])
-  securitySettings SecuritySettings? @relation("SecuritySettingsAuditLogs", fields: [resourceId], references: [id])
+  secu
 
-  @@index([actorId])
-  @@index([action])
-  @@index([resourceType])
-  @@index([resourceId])
-  @@index([createdAt])
-  @@index([status])
-}
-
-enum AuditAction {
-  CREATE
-  READ
-  UPDATE
-  DELETE
-  APPROVE
-  REJECT
-  FREEZE
-  UNFREEZE
-  CLOSE
-  OPEN
-  REVIEW
-  ESCALATE
-  RESOLVE
-  LOGIN
-  LOGOUT
-  VERIFY
-  SUSPEND
-  ACTIVATE
-}
-
-enum ResourceType {
-  USER
-  ACCOUNT
-  TRANSACTION
-  TRANSFER
-  DEPOSIT
-  WITHDRAWAL
-  CARD
-  BENEFICIARY
-  KYC_PROFILE
-  KYC_DOCUMENT
-  LOAN_APPLICATION
-  LOAN_DISBURSEMENT
-  LOAN_REPAYMENT
-  INVESTMENT_PORTFOLIO
-  INVESTMENT
-  INVESTMENT_TRANSACTION
-  SAVINGS_GOAL
-  SAVINGS_CONTRIBUTION
-  SAVINGS_WITHDRAWAL
-  SUPPORT_TICKET
-  SUPPORT_MESSAGE
-  NOTIFICATION
-  SECURITY_SETTINGS
-  PROFILE
-  ROLE
-  PERMISSION
-  SETTING
-}
-
-enum AuditStatus {
-  SUCCESS
-  FAILURE
-}
-
-model FraudAlert {
-  id              String   @id @default(cuid())
-  reference       String   @unique
-  userId          String?
-  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accountId       String?
-  account         Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  transactionId   String?
-  transaction     Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  transferId      String?
-  transfer        Transfer? @relation(fields: [transferId], references: [id], onDelete: Cascade)
-  withdrawalId    String?
-  withdrawal      Withdrawal? @relation(fields: [withdrawalId], references: [id], onDelete: Cascade)
-  cardId          String?
-  card            Card? @relation(fields: [cardId], references: [id], onDelete: Cascade)
-  alertType       FraudAlertType
-  riskScore       Int
-  description     String
-  status          FraudAlertStatus @default(OPEN)
-  assignedToId    String?
-  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
-  resolvedAt      DateTime?
-  resolvedById    String?
-  resolvedBy      User?    @relation(fields: [resolvedById], references: [id])
-  notes           String?
-  metadata        Json?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  auditLogs       AuditLog[] @relation("FraudAlertAuditLogs")
-
-  @@index([userId])
-  @@index([accountId])
-  @@index([transactionId])
-  @@index([transferId])
-  @@index([withdrawalId])
-  @@index([cardId])
-  @@index([alertType])
-  @@index([status])
-  @@index([riskScore])
-  @@index([assignedToId])
-  @@index([createdAt])
-}
-
-enum FraudAlertType {
-  UNUSUAL_ACTIVITY
-  HIGH_RISK_TRANSACTION
-  VELOCITY_VIOLATION
-  LOCATION_MISMATCH
-  DEVICE_MISMATCH
-  BEHAVIORAL_ANOMALY
-  CHARGEBACK
-  IDENTITY_THEFT
-  ACCOUNT_TAKEOVER
-  MONEY_LAUNDERING
-  TERRORIST_FINANCING
-  OTHER
-}
-
-enum FraudAlertStatus {
-  OPEN
-  UNDER_REVIEW
-  ESCALATED
-  RESOLVED
-  DISMISSED
-  FALSE_POSITIVE
-}
-
-// ============================================
-// RATE LIMITING
-// ============================================
-
-model RateLimit {
-  id              String   @id @default(cuid())
-  key             String
-  endpoint        String
-  count           Int      @default(0)
-  windowStart     DateTime @default(now())
-  windowEnd       DateTime
-  createdAt       DateTime @default(now())
-
-  @@unique([key, endpoint])
-  @@index([key])
-  @@index([endpoint])
-  @@index([windowStart])
-  @@index([windowEnd])
-}
-
-// ============================================
-// WEBHOOKS
-// ============================================
-
-model WebhookEvent {
-  id              String   @id @default(cuid())
-  eventId         String   @unique
-  provider        String
-  eventType       String
-  payload         Json
-  rawPayload      String?
-  signature       String?
-  processed       Boolean  @default(false)
-  processedAt     DateTime?
-  errorMessage    String?
-  retryCount      Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  auditLogs       AuditLog[] @relation("WebhookEventAuditLogs")
-
-  @@index([provider])
-  @@index([eventType])
-  @@index([eventId])
-  @@index([processed])
-  @@index([createdAt])
-}
-
-// ============================================
-// SETTINGS
-// ============================================
-
-model SystemSetting {
-  id              String   @id @default(cuid())
-  key             String   @unique
-  value           Json
-  description     String?
-  category        SettingCategory
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([category])
-  @@index([key])
-}
-
-enum SettingCategory {
-  GENERAL
-  TRANSACTION_LIMITS
-  SECURITY
-  NOTIFICATIONS
-  PROVIDER_CONFIGURATION
-  FEATURE_FLAGS
-  MAINTENANCE
-}
-
-model Permission {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  description     String?
-  category        String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Relations
-  roles           RolePermission[]
-
-  @@index([name])
-  @@index([category])
-}
-
-model RolePermission {
-  id              String   @id @default(cuid())
-  role            Role
-  permissionId    String
-  permission      Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-
-  @@unique([role, permissionId])
-  @@index([role])
-  @@index([permissionId])
-}
+... [Content truncated]
