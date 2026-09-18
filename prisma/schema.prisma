@@ -1166,7 +1166,7 @@ model Profile {
   timezone        String   @default("UTC")
   notifi
 cationPreferences Json @default({"email": true, "push": true, "sms": false})
-  privacySettings Json @default({showBalance: true, showTransactions: true})
+  privacySettings Json @default({"showBalance": true, "showTransactions": true})
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
