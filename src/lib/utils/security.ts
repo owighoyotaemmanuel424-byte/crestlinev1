@@ -50,6 +50,7 @@ export function verifyToken(token: string): { userId: string; role: string; iat?
     const decoded = jwt.verify(token, process.env.JWT_SECRET || '') as { userId: string; role: string; iat?: number; exp?: number };
     return decoded;
   } catc
+
 h (error) {
     throw new Error('Invalid token');
   }
