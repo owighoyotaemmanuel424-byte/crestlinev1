@@ -52,7 +52,7 @@ class ApiClient {
     token?: string
   ): Promise<BackendResponse<T>> {
     const url = this.baseUrl + endpoint;
-    
+
     const config: RequestInit = {
       method,
       headers: {
@@ -80,8 +80,7 @@ class ApiClient {
       throw error;
     }
 
-    return 
-await response.json();
+    return await response.json();
   }
 
   async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
