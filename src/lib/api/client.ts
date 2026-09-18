@@ -26,7 +26,7 @@ export interface BackendErrorResponse {
 
 export type BackendResponse<T> = BackendSuccessResponse<T> | BackendErrorResponse;
 
-interface ApiError {
+export interface ApiError {
   error: string;
   message?: string;
   details?: Record<string, any>;
@@ -80,7 +80,8 @@ class ApiClient {
       throw error;
     }
 
-    return await response.json();
+    return 
+await response.json();
   }
 
   async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
