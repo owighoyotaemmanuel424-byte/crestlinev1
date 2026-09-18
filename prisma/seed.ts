@@ -1,10 +1,3 @@
-I see you've pasted the `prisma/seed.ts` file content. This file has the enum import issue. Let me provide you with the **corrected version** of this file:
-
----
-
-## 📁 **FILE: prisma/seed.ts** (Corrected)
-
-```typescript
 import { PrismaClient } from '@prisma/client';
 import {
   Role,
