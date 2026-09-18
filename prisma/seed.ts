@@ -4,7 +4,8 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  import { PrismaClient, Role, UserStatus, AccountType, /* ... all other enums ... */ } from '@prisma/client';
+  import { PrismaClient } from '@prisma/client';
+import { Role, UserStatus, AccountType, AccountStatus, KYCStatus, KYCTier, CardType, CardBrand, CardStatus, TransactionType, TransactionStatus, TransferStatus, RiskStatus, DepositStatus, DepositMethod, WithdrawalStatus, WithdrawalMethod, BeneficiaryStatus, FeeType, LoanApplicationStatus, DisbursementStatus, RepaymentStatus, PortfolioStatus, InvestmentType, InvestmentStatus, InvestmentTransactionType, SavingsGoalStatus, ContributionStatus, SupportCategory, SupportPriority, SupportTicketStatus, NotificationType, NotificationCategory, AuditAction, ResourceType, AuditStatus, FraudAlertType, FraudAlertStatus, SettingCategory } from '@prisma/client/runtime/library';
 
   // ============================================
   // PERMISSIONS
