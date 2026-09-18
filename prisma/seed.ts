@@ -40,7 +40,7 @@ import {
   FraudAlertStatus,
   SettingCategory,
   JournalStatus
-} from '@prisma/client/runtime/library';
+} from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -61,7 +61,8 @@ async function main() {
     { name: 'account:freeze', description: 'Freeze accounts', category: 'ACCOUNT' },
     { name: 'account:unfreeze', description: 'Unfreeze accounts', category: 'ACCOUNT' },
     { name: 'account:close', description: 'Close accounts', category: 'ACCOUNT' },
-    { name: 'transaction:read', description: 'Read transactions', category: 'TRANSACTION' },
+    { name: 'transaction:read', description: 'Read transact
+ions', category: 'TRANSACTION' },
     { name: 'transaction:create', description: 'Create transactions', category: 'TRANSACTION' },
     { name: 'transaction:reverse', description: 'Reverse transactions', category: 'TRANSACTION' },
     { name: 'transfer:read', description: 'Read transfers', category: 'TRANSFER' },
@@ -84,7 +85,8 @@ async function main() {
     { name: 'kyc:request_info', description: 'Request additional information', category: 'KYC' },
     { name: 'card:read', description: 'Read cards', category: 'CARD' },
     { name: 'card:create', description: 'Create cards', category: 'CARD' },
-    { name: 'card:freeze', description: 'Freeze cards', category: 'CARD' },
+    { name: 'card:freeze', description: 'Freeze ca
+rds', category: 'CARD' },
     { name: 'card:unfreeze', description: 'Unfreeze cards', category: 'CARD' },
     { name: 'card:cancel', description: 'Cancel cards', category: 'CARD' },
     { name: 'loan:read', description: 'Read loans', category: 'LOAN' },
@@ -109,7 +111,8 @@ async function main() {
     { name: 'support:read', description: 'Read support tickets', category: 'SUPPORT' },
     { name: 'support:create', description: 'Create support tickets', category: 'SUPPORT' },
     { name: 'support:assign', description: 'Assign support tickets', category: 'SUPPORT' },
-    { name: 'support:resolve', description: 'Resolve support tickets', category: 'SUPPORT' },
+    { name: 'su
+pport:resolve', description: 'Resolve support tickets', category: 'SUPPORT' },
     { name: 'support:close', description: 'Close support tickets', category: 'SUPPORT' },
   ];
 
@@ -148,7 +151,8 @@ async function main() {
     { role: Role.SUPPORT, permissionName: 'kyc:read' },
     { role: Role.SUPPORT, permissionName: 'support:read' },
     { role: Role.SUPPORT, permissionName: 'support:create' },
-    { role: Role.SUPPORT, permissionName: 'support:assign' },
+    { role: Role.SUPPORT, pe
+rmissionName: 'support:assign' },
     { role: Role.SUPPORT, permissionName: 'support:resolve' },
     { role: Role.SUPPORT, permissionName: 'support:close' },
     { role: Role.SUPPORT, permissionName: 'audit:read' },
@@ -180,7 +184,8 @@ async function main() {
     { role: Role.OPERATOR, permissionName: 'fraud:read' },
     { role: Role.OPERATOR, permissionName: 'fraud:review' },
     { role: Role.OPERATOR, permissionName: 'fraud:resolve' },
-    { role: Role.OPERATOR, permissionName: 'audit:read' },
+    { role: Role.OPERATOR, permissionName
+: 'audit:read' },
     { role: Role.OPERATOR, permissionName: 'support:read' },
     { role: Role.OPERATOR, permissionName: 'support:assign' },
     { role: Role.COMPLIANCE, permissionName: 'user:read' },
@@ -231,7 +236,8 @@ async function main() {
       firstName: 'John',
       lastName: 'Doe',
       phone: '+1234567890',
-      dateOfBirth: new Date('1985-05-15'),
+      dateOfBirth: new Date('1985-05
+-15'),
       address: '123 Main St',
       city: 'New York',
       state: 'NY',
@@ -309,7 +315,8 @@ async function main() {
       role: Role.SUPPORT,
       emailVerified: true,
       phoneVerified: true,
-    },
+   
+ },
     {
       email: 'operator@crestline.capital',
       password,
