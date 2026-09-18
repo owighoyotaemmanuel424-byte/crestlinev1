@@ -1164,7 +1164,7 @@ model Profile {
   bio             String?
   preferredLanguage String @default("en")
   timezone        String   @default("UTC")
-  notificationcationPreferences Json @default({"email": true, "push": true, "sms": false})
+  notificationPreferences Json @default({"email": true, "push": true, "sms": false})
   privacySettings Json @default({"showBalance": true, "showTransactions": true})
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
