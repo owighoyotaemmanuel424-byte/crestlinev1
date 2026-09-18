@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding Crestline Capital database...');
+  import { PrismaClient, Role, UserStatus, AccountType, /* ... all other enums ... */ } from '@prisma/client';
 
   // ============================================
   // PERMISSIONS
