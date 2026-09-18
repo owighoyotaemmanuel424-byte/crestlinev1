@@ -1168,8 +1168,11 @@ model Profile {
   privacySettings Json @default({"showBalance": true, "showTransactions": true})
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-}
 
+  // Relations
+  auditLogs       AuditLog[] @relation("SecuritySettingsAuditLogs")
+  sessions        Session[]
+}
 // ============================================
 // AUDIT & FRAUD
 // ============================================
