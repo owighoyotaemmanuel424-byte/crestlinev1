@@ -2,6 +2,7 @@
 // Export all hooks
 
 export { useAuth, type UseAuthReturn, type AuthState } from './useAuth';
+export { useToast, type UseToastReturn, type ToastType, type ToastMessage } from './use-toast';
 export { useAccounts, type UseAccountsReturn, type UseAccountsState, useAccount, type UseAccountReturn, type UseAccountState } from './useAccounts';
 export { useTransactions, type UseTransactionsReturn, type UseTransactionsState, useTransaction, type UseTransactionReturn, type UseTransactionState } from './useTransactions';
 export { useTransfers, type UseTransfersReturn, type UseTransfersState } from './useTransfers';
