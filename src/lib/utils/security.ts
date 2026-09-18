@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 
 // Generate a unique reference number
 export function generateReference(prefix: string = 'CL'): string {
@@ -61,7 +62,8 @@ export function generateShortCode(length: number = 6): string {
 export function sanitizeInput(input: string): string {
   return input
     .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
+    .replac
+e(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;');
@@ -113,3 +115,14 @@ export const AUTH_RATE_LIMIT: RateLimitConfig = {
   windowMs: 60 * 1000,
   maxRequests: 5,
 };
+
+// JWT Token verification
+export function verifyToken(token: string): { userId: string; role: string; iat?: number; exp?: number } {
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || '') as { userId: string; role: string; iat?: number; exp?: number };
+    return decoded;
+  } catch (error) {
+    throw new Error('Invalid token');
+  }
+}
+
