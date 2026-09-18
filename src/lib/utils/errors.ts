@@ -74,7 +74,8 @@ export class TransferError extends AppError {
 
 export class InvalidRecipientError extends AppError {
   constructor(message: string) {
-    super(400, message, 'INVALID_RECIPIENT');
+    super(400, message, 'INVALID
+_RECIPIENT');
   }
 }
 
@@ -160,7 +161,8 @@ export class WebhookError extends AppError {
 // State Machine Errors
 export class InvalidStateTransitionError extends AppError {
   constructor(from: string, to: string) {
-    super(400, `Cannot transition from ${from} to ${to}`, 'INVALID_STATE_TRANSITION');
+    super(400, `Cannot transition from ${from} to ${to}`, 'INVALID
+_STATE_TRANSITION');
   }
 }
 
@@ -168,6 +170,20 @@ export class InvalidStateTransitionError extends AppError {
 export class OwnershipError extends AppError {
   constructor(resource: string) {
     super(403, `You do not own this ${resource}`, 'OWNERSHIP_ERROR');
+  }
+}
+
+
+// Limit Errors
+export class DailyLimitExceededError extends AppError {
+  constructor(message = 'Daily limit exceeded') {
+    super(429, message, 'DAILY_LIMIT_EXCEEDED');
+  }
+}
+
+export class MonthlyLimitExceededError extends AppError {
+  constructor(message = 'Monthly limit exceeded') {
+    super(429, message, 'MONTHLY_LIMIT_EXCEEDED');
   }
 }
 
