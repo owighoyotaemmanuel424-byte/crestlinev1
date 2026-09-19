@@ -44,12 +44,15 @@ model User {
   withdrawalReviews   Withdrawal[] @relation("WithdrawalReviews")
   cards               Card[]
   beneficiaries       Beneficiary[]
-  kycProfile          KYCProfile?
-  kycDocuments        KYCDocument[]
+  kycProfile          KYCProfile? @relation("UserKYCProfile")
+  kycProfileReviews   KYCProfile[] @relation("KYCProfileReviews")
+  kycDocuments        KYCDocument[] @relation("UserKYCDocuments")
+  kycDocumentReviews  KYCDocument[] @relation("KYCDocumentReviews")
   notifications       Notification[]
   auditLogs           AuditLog[]           @relation("UserAuditLogs")
   sessions            Session[]
-  loanApplications    LoanApplication[]
+  loanApplications    LoanApplication[] @relation("UserLoanApplications")
+  loanApplicationReviews LoanApplication[] @relation("LoanApplicationReviews")
   savingsGoals        SavingsGoal[]
   investmentPortfolios InvestmentPortfolio[]
   supportTickets      SupportTicket[]
@@ -582,12 +585,12 @@ enum CardStatus {
 model KYCProfile {
   id              String   @id @default(cuid())
   userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation("UserKYCProfile", fields: [userId], references: [id], onDelete: Cascade)
   status          KYCStatus @default(PENDING)
   tier            KYCTier   @default(TIER_1)
   verifiedAt      DateTime?
   verifiedById    String?
-  verifiedBy      User?    @relation(fields: [verifiedById], references: [id])
+  verifiedBy      User?    @relation("KYCProfileReviews", fields: [verifiedById], references: [id])
   rejectionReason String?
   notes           String?
   createdAt       DateTime @default(now())
@@ -621,7 +624,7 @@ enum KYCTier {
 model KYCDocument {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation("UserKYCDocuments", fields: [userId], references: [id], onDelete: Cascade)
   kycProfileId    String
   kycProfile      KYCProfile @relation(fields: [kycProfileId], references: [id], onDelete: Cascade)
   documentType    KYCDocumentType
@@ -632,7 +635,7 @@ model KYCDocument {
   status          DocumentStatus @default(PENDING)
   reviewNotes     String?
   reviewedById    String?
-  reviewedBy      User?    @relation(fields: [reviewedById], references: [id])
+  reviewedBy      User?    @relation("KYCDocumentReviews", fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -676,7 +679,7 @@ model LoanApplication {
   id              String   @id @default(cuid())
   reference       String   @unique
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation("UserLoanApplications", fields: [userId], references: [id], onDelete: Cascade)
   accountId       String
   account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   requestedAmount Decimal  @db.Decimal(20, 2)
@@ -687,7 +690,7 @@ model LoanApplication {
   status          LoanApplicationStatus @default(DRAFT)
   reviewNotes     String?
   reviewedById    String?
-  reviewedBy      User?    @relation(fields: [reviewedById], references: [id])
+  reviewedBy      User?    @relation("LoanApplicationReviews", fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
   metadata        Json?
   createdAt       DateTime @default(now())
