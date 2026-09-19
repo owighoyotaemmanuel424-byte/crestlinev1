@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -95,13 +96,13 @@ export default function LoginPage() {
 
         <CardFooter className="flex flex-col space-y-4">
           <div className="text-sm text-center">
-            <a href="/forgot-password" className="text-blue-600 hover:underline">
+            <Link href="/forgot-password" className="text-blue-600 hover:underline">
               Forgot password?
-            </a>
+            </Link>
           </div>
 
           <div className="text-sm text-center text-muted-foreground">
-            Don't have an account?{' '}
+            Don&apos;t have an account?{' '}
             <a href="/register" className="text-blue-600 hover:underline font-medium">
               Sign up
             </a>
