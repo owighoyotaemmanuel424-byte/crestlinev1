@@ -175,13 +175,19 @@ export class OwnershipError extends AppError {
 
 // Limit Errors
 export class DailyLimitExceededError extends AppError {
-  constructor(message = 'Daily limit exceeded') {
+  constructor(userId: string, limit?: number, attempted?: number) {
+    const message = limit !== undefined && attempted !== undefined
+      ? `Daily limit exceeded for user ${userId}. Limit: ${limit}, attempted: ${attempted}`
+      : 'Daily limit exceeded';
     super(429, message, 'DAILY_LIMIT_EXCEEDED');
   }
 }
 
 export class MonthlyLimitExceededError extends AppError {
-  constructor(message = 'Monthly limit exceeded') {
+  constructor(userId: string, limit?: number, attempted?: number) {
+    const message = limit !== undefined && attempted !== undefined
+      ? `Monthly limit exceeded for user ${userId}. Limit: ${limit}, attempted: ${attempted}`
+      : 'Monthly limit exceeded';
     super(429, message, 'MONTHLY_LIMIT_EXCEEDED');
   }
 }
@@ -212,15 +218,3 @@ export function isAppError(error: unknown): error is AppError {
   return error instanceof AppError;
 }
 
-// Transfer/Withdrawal Limits
-export class DailyLimitExceededError extends AppError {
-  constructor(message = 'Daily limit exceeded') {
-    super(429, message, 'DAILY_LIMIT_EXCEEDED');
-  }
-}
-
-export class MonthlyLimitExceededError extends AppError {
-  constructor(message = 'Monthly limit exceeded') {
-    super(429, message, 'MONTHLY_LIMIT_EXCEEDED');
-  }
-}
