@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAccounts, useBeneficiaries, useTransfers, useToast } from '@/hooks';
 import { formatCurrency } from '@/lib/utils';
@@ -13,7 +13,7 @@ import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Dialog } from '@/components/ui/dialog';
 
-export default function TransferPage() {
+function TransferPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { accounts } = useAccounts({ limit: 100 });
@@ -262,4 +262,12 @@ export default function TransferPage() {
       </Dialog>
     </div>
   );
+
+export default function TransferPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-6">Loading...</div>}>
+      <TransferPageContent />
+    </Suspense>
+  );
+}
 }
