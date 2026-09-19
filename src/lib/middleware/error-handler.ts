@@ -109,9 +109,9 @@ export function formatError(error: unknown): ErrorResponse {
  * Usage: wrap your route handler with this
  */
 export function withErrorHandler(
-  handler: (request: NextRequest, context?: { params: Record<string, string> }) => Promise<Response>
+  handler: (request: Request, context?: { params: Record<string, string> }) => Promise<Response>
 ) {
-  return async function (request: NextRequest, context?: { params: Record<string, string> }) {
+  return async function (request: Request, context?: { params: Record<string, string> }) {
     try {
       return await handler(request, context);
     } catch (error) {
@@ -132,7 +132,7 @@ export function withErrorHandler(
  * Async error handler for route functions
  */
 export async function handleRouteError(
-  request: NextRequest,
+  request: Request,
   context: { params: Record<string, string> },
   handler: () => Promise<Response | NextResponse>
 ): Promise<Response | NextResponse> {
