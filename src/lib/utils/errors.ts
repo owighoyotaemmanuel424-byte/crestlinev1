@@ -74,8 +74,7 @@ export class TransferError extends AppError {
 
 export class InvalidRecipientError extends AppError {
   constructor(message: string) {
-    super(400, message, 'INVALID
-_RECIPIENT');
+    super(400, message, 'INVALID_RECIPIENT');
   }
 }
 
@@ -161,8 +160,7 @@ export class WebhookError extends AppError {
 // State Machine Errors
 export class InvalidStateTransitionError extends AppError {
   constructor(from: string, to: string) {
-    super(400, `Cannot transition from ${from} to ${to}`, 'INVALID
-_STATE_TRANSITION');
+    super(400, `Cannot transition from ${from} to ${to}`, 'INVALID_STATE_TRANSITION');
   }
 }
 
