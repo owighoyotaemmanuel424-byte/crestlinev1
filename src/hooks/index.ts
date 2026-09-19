@@ -4,7 +4,7 @@
 export { useAuth, type UseAuthReturn, type AuthState } from './useAuth';
 export { useToast, type UseToastReturn, type ToastType, type ToastMessage } from './use-toast';
 export { useAccounts, type UseAccountsReturn, type UseAccountsState, useAccount, type UseAccountReturn, type UseAccountState } from './useAccounts';
-export { useTransactions, type UseTransactionsReturn, type UseTransactionsState } from './useTransactions';
+export { useTransactions, useTransaction, type UseTransactionsReturn, type UseTransactionsState, type UseTransactionReturn, type UseTransactionState } from './useTransactions';
 export { useTransfers, type UseTransfersReturn } from './useTransfers';
 export { useDeposits, type UseDepositsReturn } from './useDeposits';
 export { useWithdrawals, type UseWithdrawalsReturn } from './useWithdrawals';
