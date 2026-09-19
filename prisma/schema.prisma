@@ -130,6 +130,9 @@ model Account {
   ledgerEntries         LedgerEntry[]
   loanDisbursements      LoanDisbursement[]
   loanRepayments         LoanRepayment[]
+  loanApplications      LoanApplication[]
+  savingsWithdrawals    SavingsWithdrawal[]
+  fraudAlerts           FraudAlert[]
   savingsContributions   SavingsContribution[]
   investmentTransactions InvestmentTransaction[]
 
@@ -167,6 +170,9 @@ model Journal {
 
   // Relations
   entries     LedgerEntry[]
+  investmentTransaction InvestmentTransaction?
+  savingsContribution SavingsContribution?
+  savingsWithdrawal SavingsWithdrawal?
   transaction Transaction?
   transfer    Transfer?
   deposit     Deposit?
@@ -235,11 +241,12 @@ model Transaction {
 
   // Relations
   journal         Journal?     @relation(fields: [journalId], references: [id])
-  journalId       String?
-  transfer        Transfer?
-  deposit         Deposit?
-  withdrawal      Withdrawal?
+  journalId       String?       @unique
   fee             Fee[]
+  ledgerEntries   LedgerEntry[]
+  fraudAlerts     FraudAlert[]
+  loanDisbursements LoanDisbursement[]
+  loanRepayments  LoanRepayment[]
 
   @@index([userId])
   @@index([accountId])
@@ -326,8 +333,7 @@ model Transfer {
 
   // Relations
   journal         Journal?     @relation(fields: [journalId], references: [id])
-  journalId       String?
-  transaction     Transaction?
+  journalId       String?       @unique
   beneficiary     Beneficiary? @relation(fields: [beneficiaryId], references: [id])
   beneficiaryId   String?
   fraudAlerts     FraudAlert[]
@@ -442,8 +448,7 @@ model Withdrawal {
 
   // Relations
   journal         Journal?      @relation(fields: [journalId], references: [id])
-  journalId       String?
-  transaction     Transaction?
+  journalId       String?        @unique
   fraudAlerts     FraudAlert[]
 
   @@index([userId])
@@ -722,9 +727,9 @@ model LoanDisbursement {
   amount          Decimal @db.Decimal(20, 2)
   disbursedAt     DateTime @default(now())
   status          DisbursementStatus @default(PENDING)
-  journalId       String?
+  journalId       String? @unique
   journal         Journal? @relation(fields: [journalId], references: [id])
-  transactionId   String?
+  transactionId   String? @unique
   transaction     Transaction? @relation(fields: [transactionId], references: [id])
 
   // Relations
@@ -861,7 +866,7 @@ model InvestmentTransaction {
   status          TransactionStatus @default(COMPLETED)
 
   // Relations
-  journalId       String?
+  journalId       String? @unique
   journal         Journal? @relation(fields: [journalId], references: [id])
 
   @@index([portfolioId])
@@ -925,7 +930,7 @@ model SavingsContribution {
   description     String?
   contributedAt   DateTime @default(now())
   status          ContributionStatus @default(COMPLETED)
-  journalId       String?
+  journalId       String? @unique
   journal         Journal? @relation(fields: [journalId], references: [id])
 
   // Relations
@@ -953,7 +958,7 @@ model SavingsWithdrawal {
   description     String?
   withdrawnAt     DateTime @default(now())
   status          WithdrawalStatus @default(COMPLETED)
-  journalId       String?
+  journalId       String? @unique
   journal         Journal? @relation(fields: [journalId], references: [id])
 
   // Relations
@@ -1132,7 +1137,6 @@ model SecuritySettings {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  sessions        Session[]
 }
 
 model Profile {
@@ -1156,6 +1160,7 @@ model Profile {
 model AuditLog {
   id              String   @id @default(cuid())
   actorId         String?
+  actor           User?    @relation("UserAuditLogs", fields: [actorId], references: [id])
   action          AuditAction
   resourceType    ResourceType
   resourceId      String
