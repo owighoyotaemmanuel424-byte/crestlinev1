@@ -638,8 +638,7 @@ async function main() {
       description: 'Transfer to Jane Smith',
       status: TransferStatus.COMPLETED,
       riskStatus: RiskStatus.LOW,
-      beneficiaryId: beneficiaries.find(b => b.userId === johnDoe.id && b.accountNumber === 'CL-002-000001')?.id,
-      transaction: { connect: { id: tx3.id } },
+      beneficiaryId: await prisma.beneficiary.findUnique({ where: { userId_accountNumber: { userId: johnDoe.id, accountNumber: 'CL-002-000001' } } }).then(b => b?.id),
     },
   });
 
@@ -660,7 +659,7 @@ async function main() {
         accountId: johnChecking.id,
         entryType: 'DEBIT',
         amount: 100.00,
-        balance: johnChecking.balance - 100.00,
+        balance: johnChecking.balance.minus(100.00),
         description: 'Transfer to Jane Smith',
         transactionId: tx3.id,
       },
@@ -669,7 +668,7 @@ async function main() {
         accountId: janeChecking.id,
         entryType: 'CREDIT',
         amount: 100.00,
-        balance: janeChecking.balance + 100.00,
+        balance: janeChecking.balance.plus(100.00),
         description: 'Transfer from John Doe',
         transactionId: tx3.id,
       },
