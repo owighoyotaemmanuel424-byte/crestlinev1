@@ -40,28 +40,18 @@ model User {
   transfersFrom       Transfer[]           @relation("FromUser")
   transfersTo         Transfer[]           @relation("ToUser")
   deposits            Deposit[]
-  withdrawals         Withdrawal[]       @relation("UserWithdrawals")
-  withdrawalReviews   Withdrawal[]      @relation("WithdrawalReviews")
+  withdrawals         Withdrawal[]
   cards               Card[]
   beneficiaries       Beneficiary[]
-  kycProfile          KYCProfile?        @relation("UserKYCProfile")
-  kycProfileReviews   KYCProfile[]      @relation("KYCProfileReviews")
-  kycDocuments        KYCDocument[]      @relation("UserKYCDocuments")
-  kycDocumentReviews  KYCDocument[]     @relation("KYCDocumentReviews")
+  kycProfile          KYCProfile?
+  kycDocuments        KYCDocument[]
   notifications       Notification[]
   auditLogs           AuditLog[]           @relation("UserAuditLogs")
   sessions            Session[]
-  loanApplications    LoanApplication[] @relation("UserLoanApplications")
-  loanApplicationReviews LoanApplication[] @relation("LoanApplicationReviews")
+  loanApplications    LoanApplication[]
   savingsGoals        SavingsGoal[]
   investmentPortfolios InvestmentPortfolio[]
-  supportTickets      SupportTicket[]    @relation("UserSupportTickets")
-  assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
-  resolvedSupportTickets SupportTicket[] @relation("SupportTicketResolver")
-  supportMessages      SupportMessage[] @relation("SupportMessageSender")
-  fraudAlerts          FraudAlert[] @relation("UserFraudAlerts")
-  assignedFraudAlerts  FraudAlert[] @relation("FraudAlertAssignee")
-  resolvedFraudAlerts  FraudAlert[] @relation("FraudAlertResolver")
+  supportTickets      SupportTicket[]
   securitySettings    SecuritySettings?
   profile             Profile?
 
@@ -130,9 +120,6 @@ model Account {
   ledgerEntries         LedgerEntry[]
   loanDisbursements      LoanDisbursement[]
   loanRepayments         LoanRepayment[]
-  loanApplications      LoanApplication[]
-  savingsWithdrawals    SavingsWithdrawal[]
-  fraudAlerts           FraudAlert[]
   savingsContributions   SavingsContribution[]
   investmentTransactions InvestmentTransaction[]
 
@@ -170,9 +157,6 @@ model Journal {
 
   // Relations
   entries     LedgerEntry[]
-  investmentTransaction InvestmentTransaction?
-  savingsContribution SavingsContribution?
-  savingsWithdrawal SavingsWithdrawal?
   transaction Transaction?
   transfer    Transfer?
   deposit     Deposit?
@@ -241,12 +225,12 @@ model Transaction {
 
   // Relations
   journal         Journal?     @relation(fields: [journalId], references: [id])
-  journalId       String?       @unique
+  journalId       String?
+  transfer        Transfer?
+  deposit         Deposit?
+  withdrawal      Withdrawal?
   fee             Fee[]
-  ledgerEntries   LedgerEntry[]
-  fraudAlerts     FraudAlert[]
-  loanDisbursements LoanDisbursement[]
-  loanRepayments  LoanRepayment[]
+  auditLogs       AuditLog[]   @relation("TransactionAuditLogs")
 
   @@index([userId])
   @@index([accountId])
@@ -333,9 +317,11 @@ model Transfer {
 
   // Relations
   journal         Journal?     @relation(fields: [journalId], references: [id])
-  journalId       String?       @unique
+  journalId       String?
+  transaction     Transaction?
   beneficiary     Beneficiary? @relation(fields: [beneficiaryId], references: [id])
   beneficiaryId   String?
+  auditLogs       AuditLog[]   @relation("TransferAuditLogs")
   fraudAlerts     FraudAlert[]
 
   @@index([fromUserId])
@@ -390,7 +376,9 @@ model Deposit {
 
   // Relations
   journal         Journal?     @relation(fields: [journalId], references: [id])
-  journalId       String? @unique
+  journalId       String?
+  transaction     Transaction?
+  auditLogs       AuditLog[]   @relation("DepositAuditLogs")
 
   @@index([userId])
   @@index([accountId])
@@ -425,7 +413,7 @@ model Withdrawal {
   id              String        @id @default(cuid())
   reference       String        @unique
   userId          String
-  user            User          @relation("UserWithdrawals", fields: [userId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountId       String
   account         Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   amount          Decimal       @db.Decimal(20, 2)
@@ -439,7 +427,7 @@ model Withdrawal {
   idempotencyKey  String?       @unique
   reviewNotes     String?
   reviewedById    String?
-  reviewedBy      User?          @relation("WithdrawalReviews", fields: [reviewedById], references: [id])
+  reviewedBy      User?          @relation(fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
   metadata        Json?
   createdAt       DateTime      @default(now())
@@ -447,7 +435,9 @@ model Withdrawal {
 
   // Relations
   journal         Journal?      @relation(fields: [journalId], references: [id])
-  journalId       String?        @unique
+  journalId       String?
+  transaction     Transaction?
+  auditLogs       AuditLog[]    @relation("WithdrawalAuditLogs")
   fraudAlerts     FraudAlert[]
 
   @@index([userId])
@@ -505,6 +495,7 @@ model Beneficiary {
 
   // Relations
   transfers       Transfer[]
+  auditLogs       AuditLog[] @relation("BeneficiaryAuditLogs")
 
   @@unique([userId, accountNumber])
   @@index([userId])
@@ -547,6 +538,8 @@ model Card {
   updatedAt       DateTime @updatedAt
 
   // Relations
+  transactions    Transaction[]
+  auditLogs       AuditLog[]   @relation("CardAuditLogs")
   fraudAlerts     FraudAlert[]
 
   @@index([userId])
@@ -588,12 +581,12 @@ enum CardStatus {
 model KYCProfile {
   id              String   @id @default(cuid())
   userId          String   @unique
-  user            User     @relation("UserKYCProfile", fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   status          KYCStatus @default(PENDING)
   tier            KYCTier   @default(TIER_1)
   verifiedAt      DateTime?
   verifiedById    String?
-  verifiedBy      User?    @relation("KYCProfileReviews", fields: [verifiedById], references: [id])
+  verifiedBy      User?    @relation(fields: [verifiedById], references: [id])
   rejectionReason String?
   notes           String?
   createdAt       DateTime @default(now())
@@ -601,6 +594,7 @@ model KYCProfile {
 
   // Relations
   documents       KYCDocument[]
+  auditLogs       AuditLog[]   @relation("KYCAuditLogs")
 
   @@index([userId])
   @@index([status])
@@ -626,7 +620,7 @@ enum KYCTier {
 model KYCDocument {
   id              String   @id @default(cuid())
   userId          String
-  user            User     @relation("UserKYCDocuments", fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   kycProfileId    String
   kycProfile      KYCProfile @relation(fields: [kycProfileId], references: [id], onDelete: Cascade)
   documentType    KYCDocumentType
@@ -637,12 +631,13 @@ model KYCDocument {
   status          DocumentStatus @default(PENDING)
   reviewNotes     String?
   reviewedById    String?
-  reviewedBy      User?    @relation("KYCDocumentReviews", fields: [reviewedById], references: [id])
+  reviewedBy      User?    @relation(fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   // Relations
+  auditLogs       AuditLog[] @relation("KYCDocumentAuditLogs")
 
   @@index([userId])
   @@index([kycProfileId])
@@ -680,7 +675,7 @@ model LoanApplication {
   id              String   @id @default(cuid())
   reference       String   @unique
   userId          String
-  user            User     @relation("UserLoanApplications", fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountId       String
   account         Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   requestedAmount Decimal  @db.Decimal(20, 2)
@@ -691,7 +686,7 @@ model LoanApplication {
   status          LoanApplicationStatus @default(DRAFT)
   reviewNotes     String?
   reviewedById    String?
-  reviewedBy      User?    @relation("LoanApplicationReviews", fields: [reviewedById], references: [id])
+  reviewedBy      User?    @relation(fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
   metadata        Json?
   createdAt       DateTime @default(now())
@@ -700,6 +695,7 @@ model LoanApplication {
   // Relations
   disbursements   LoanDisbursement[]
   repayments      LoanRepayment[]
+  auditLogs       AuditLog[] @relation("LoanApplicationAuditLogs")
 
   @@index([userId])
   @@index([reference])
@@ -725,12 +721,13 @@ model LoanDisbursement {
   amount          Decimal @db.Decimal(20, 2)
   disbursedAt     DateTime @default(now())
   status          DisbursementStatus @default(PENDING)
-  journalId       String? @unique
+  journalId       String?
   journal         Journal? @relation(fields: [journalId], references: [id])
-  transactionId   String? @unique
+  transactionId   String?
   transaction     Transaction? @relation(fields: [transactionId], references: [id])
 
   // Relations
+  auditLogs       AuditLog[] @relation("LoanDisbursementAuditLogs")
 
   @@index([loanApplicationId])
   @@index([accountId])
@@ -757,12 +754,13 @@ model LoanRepayment {
   paymentDate     DateTime @default(now())
   dueDate         DateTime?
   status          RepaymentStatus @default(PENDING)
-  journalId       String? @unique
+  journalId       String?
   journal         Journal? @relation(fields: [journalId], references: [id])
   transactionId   String?
   transaction     Transaction? @relation(fields: [transactionId], references: [id])
 
   // Relations
+  auditLogs       AuditLog[] @relation("LoanRepaymentAuditLogs")
 
   @@index([loanApplicationId])
   @@index([accountId])
@@ -795,6 +793,7 @@ model InvestmentPortfolio {
   // Relations
   investments     Investment[]
   transactions    InvestmentTransaction[]
+  auditLogs       AuditLog[] @relation("InvestmentPortfolioAuditLogs")
 
   @@unique([userId, name])
   @@index([userId])
@@ -864,7 +863,7 @@ model InvestmentTransaction {
   status          TransactionStatus @default(COMPLETED)
 
   // Relations
-  journalId       String? @unique
+  journalId       String?
   journal         Journal? @relation(fields: [journalId], references: [id])
 
   @@index([portfolioId])
@@ -904,6 +903,7 @@ model SavingsGoal {
   // Relations
   contributions   SavingsContribution[]
   withdrawals     SavingsWithdrawal[]
+  auditLogs       AuditLog[] @relation("SavingsGoalAuditLogs")
 
   @@unique([userId, name])
   @@index([userId])
@@ -928,10 +928,11 @@ model SavingsContribution {
   description     String?
   contributedAt   DateTime @default(now())
   status          ContributionStatus @default(COMPLETED)
-  journalId       String? @unique
+  journalId       String?
   journal         Journal? @relation(fields: [journalId], references: [id])
 
   // Relations
+  auditLogs       AuditLog[] @relation("SavingsContributionAuditLogs")
 
   @@index([savingsGoalId])
   @@index([accountId])
@@ -956,10 +957,11 @@ model SavingsWithdrawal {
   description     String?
   withdrawnAt     DateTime @default(now())
   status          WithdrawalStatus @default(COMPLETED)
-  journalId       String? @unique
+  journalId       String?
   journal         Journal? @relation(fields: [journalId], references: [id])
 
   // Relations
+  auditLogs       AuditLog[] @relation("SavingsWithdrawalAuditLogs")
 
   @@index([savingsGoalId])
   @@index([accountId])
@@ -974,23 +976,24 @@ model SupportTicket {
   id              String   @id @default(cuid())
   reference       String   @unique
   userId          String
-  user            User     @relation("UserSupportTickets", fields: [userId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   subject         String
   category        SupportCategory
   priority        SupportPriority @default(MEDIUM)
   description     String
   status          SupportTicketStatus @default(OPEN)
   assignedToId    String?
-  assignedTo      User?    @relation("SupportTicketAssignee", fields: [assignedToId], references: [id])
+  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
   resolvedAt      DateTime?
   resolvedById    String?
-  resolvedBy      User?    @relation("SupportTicketResolver", fields: [resolvedById], references: [id])
+  resolvedBy      User?    @relation(fields: [resolvedById], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   // Relations
   messages        SupportMessage[]
   attachments     SupportAttachment[]
+  auditLogs       AuditLog[] @relation("SupportTicketAuditLogs")
 
   @@index([userId])
   @@index([reference])
@@ -1038,7 +1041,7 @@ model SupportMessage {
   ticketId        String
   ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   senderId        String
-  sender          User     @relation("SupportMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  sender          User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
   message         String
   isInternal      Boolean  @default(false)
   createdAt       DateTime @default(now())
@@ -1135,6 +1138,8 @@ model SecuritySettings {
   updatedAt       DateTime @updatedAt
 
   // Relations
+  auditLogs       AuditLog[] @relation("SecuritySettingsAuditLogs")
+  sessions        Session[]
 }
 
 model Profile {
@@ -1172,6 +1177,24 @@ model AuditLog {
   createdAt       DateTime @default(now())
 
   // Polymorphic relations for different resource types
+  user            User?    @relation("TransactionAuditLogs", fields: [resourceId], references: [id])
+  transaction     Transaction? @relation("TransactionAuditLogs", fields: [resourceId], references: [id])
+  transfer        Transfer? @relation("TransferAuditLogs", fields: [resourceId], references: [id])
+  deposit         Deposit? @relation("DepositAuditLogs", fields: [resourceId], references: [id])
+  withdrawal      Withdrawal? @relation("WithdrawalAuditLogs", fields: [resourceId], references: [id])
+  card            Card? @relation("CardAuditLogs", fields: [resourceId], references: [id])
+  beneficiary     Beneficiary? @relation("BeneficiaryAuditLogs", fields: [resourceId], references: [id])
+  kycProfile      KYCProfile? @relation("KYCAuditLogs", fields: [resourceId], references: [id])
+  kycDocument     KYCDocument? @relation("KYCDocumentAuditLogs", fields: [resourceId], references: [id])
+  loanApplication LoanApplication? @relation("LoanApplicationAuditLogs", fields: [resourceId], references: [id])
+  loanDisbursement LoanDisbursement? @relation("LoanDisbursementAuditLogs", fields: [resourceId], references: [id])
+  loanRepayment    LoanRepayment? @relation("LoanRepaymentAuditLogs", fields: [resourceId], references: [id])
+  investmentPortfolio InvestmentPortfolio? @relation("InvestmentPortfolioAuditLogs", fields: [resourceId], references: [id])
+  savingsGoal     SavingsGoal? @relation("SavingsGoalAuditLogs", fields: [resourceId], references: [id])
+  savingsContribution SavingsContribution? @relation("SavingsContributionAuditLogs", fields: [resourceId], references: [id])
+  savingsWithdrawal SavingsWithdrawal? @relation("SavingsWithdrawalAuditLogs", fields: [resourceId], references: [id])
+  supportTicket   SupportTicket? @relation("SupportTicketAuditLogs", fields: [resourceId], references: [id])
+  securitySettings SecuritySettings? @relation("SecuritySettingsAuditLogs", fields: [resourceId], references: [id])
 
   @@index([actorId])
   @@index([action])
@@ -1241,7 +1264,7 @@ model FraudAlert {
   id              String   @id @default(cuid())
   reference       String   @unique
   userId          String?
-  user            User?    @relation("UserFraudAlerts", fields: [userId], references: [id], onDelete: Cascade)
+  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountId       String?
   account         Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactionId   String?
@@ -1257,16 +1280,17 @@ model FraudAlert {
   description     String
   status          FraudAlertStatus @default(OPEN)
   assignedToId    String?
-  assignedTo      User?    @relation("FraudAlertAssignee", fields: [assignedToId], references: [id])
+  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
   resolvedAt      DateTime?
   resolvedById    String?
-  resolvedBy      User?    @relation("FraudAlertResolver", fields: [resolvedById], references: [id])
+  resolvedBy      User?    @relation(fields: [resolvedById], references: [id])
   notes           String?
   metadata        Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   // Relations
+  auditLogs       AuditLog[] @relation("FraudAlertAuditLogs")
 
   @@index([userId])
   @@index([accountId])
@@ -1345,6 +1369,7 @@ model WebhookEvent {
   updatedAt       DateTime @updatedAt
 
   // Relations
+  auditLogs       AuditLog[] @relation("WebhookEventAuditLogs")
 
   @@index([provider])
   @@index([eventType])
