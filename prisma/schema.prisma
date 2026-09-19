@@ -51,7 +51,7 @@ model User {
   notifications       Notification[]
   auditLogs           AuditLog[]           @relation("UserAuditLogs")
   sessions            Session[]
-  loanApplications    LoanApplication[]
+  loanApplications    LoanApplication[] @relation("UserLoanApplications")
   loanApplicationReviews LoanApplication[] @relation("LoanApplicationReviews")
   savingsGoals        SavingsGoal[]
   investmentPortfolios InvestmentPortfolio[]
@@ -240,7 +240,6 @@ model Transaction {
   deposit         Deposit?
   withdrawal      Withdrawal?
   fee             Fee[]
-  auditLogs       AuditLog[]   @relation("TransactionAuditLogs")
 
   @@index([userId])
   @@index([accountId])
@@ -331,7 +330,6 @@ model Transfer {
   transaction     Transaction?
   beneficiary     Beneficiary? @relation(fields: [beneficiaryId], references: [id])
   beneficiaryId   String?
-  auditLogs       AuditLog[]   @relation("TransferAuditLogs")
   fraudAlerts     FraudAlert[]
 
   @@index([fromUserId])
@@ -388,7 +386,6 @@ model Deposit {
   journal         Journal?     @relation(fields: [journalId], references: [id])
   journalId       String?
   transaction     Transaction?
-  auditLogs       AuditLog[]   @relation("DepositAuditLogs")
 
   @@index([userId])
   @@index([accountId])
@@ -447,7 +444,6 @@ model Withdrawal {
   journal         Journal?      @relation(fields: [journalId], references: [id])
   journalId       String?
   transaction     Transaction?
-  auditLogs       AuditLog[]    @relation("WithdrawalAuditLogs")
   fraudAlerts     FraudAlert[]
 
   @@index([userId])
@@ -505,7 +501,6 @@ model Beneficiary {
 
   // Relations
   transfers       Transfer[]
-  auditLogs       AuditLog[] @relation("BeneficiaryAuditLogs")
 
   @@unique([userId, accountNumber])
   @@index([userId])
@@ -549,7 +544,6 @@ model Card {
 
   // Relations
   transactions    Transaction[]
-  auditLogs       AuditLog[]   @relation("CardAuditLogs")
   fraudAlerts     FraudAlert[]
 
   @@index([userId])
@@ -604,7 +598,6 @@ model KYCProfile {
 
   // Relations
   documents       KYCDocument[]
-  auditLogs       AuditLog[]   @relation("KYCAuditLogs")
 
   @@index([userId])
   @@index([status])
@@ -647,7 +640,6 @@ model KYCDocument {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  auditLogs       AuditLog[] @relation("KYCDocumentAuditLogs")
 
   @@index([userId])
   @@index([kycProfileId])
@@ -705,7 +697,6 @@ model LoanApplication {
   // Relations
   disbursements   LoanDisbursement[]
   repayments      LoanRepayment[]
-  auditLogs       AuditLog[] @relation("LoanApplicationAuditLogs")
 
   @@index([userId])
   @@index([reference])
@@ -737,7 +728,6 @@ model LoanDisbursement {
   transaction     Transaction? @relation(fields: [transactionId], references: [id])
 
   // Relations
-  auditLogs       AuditLog[] @relation("LoanDisbursementAuditLogs")
 
   @@index([loanApplicationId])
   @@index([accountId])
@@ -770,7 +760,6 @@ model LoanRepayment {
   transaction     Transaction? @relation(fields: [transactionId], references: [id])
 
   // Relations
-  auditLogs       AuditLog[] @relation("LoanRepaymentAuditLogs")
 
   @@index([loanApplicationId])
   @@index([accountId])
@@ -803,7 +792,6 @@ model InvestmentPortfolio {
   // Relations
   investments     Investment[]
   transactions    InvestmentTransaction[]
-  auditLogs       AuditLog[] @relation("InvestmentPortfolioAuditLogs")
 
   @@unique([userId, name])
   @@index([userId])
@@ -913,7 +901,6 @@ model SavingsGoal {
   // Relations
   contributions   SavingsContribution[]
   withdrawals     SavingsWithdrawal[]
-  auditLogs       AuditLog[] @relation("SavingsGoalAuditLogs")
 
   @@unique([userId, name])
   @@index([userId])
@@ -942,7 +929,6 @@ model SavingsContribution {
   journal         Journal? @relation(fields: [journalId], references: [id])
 
   // Relations
-  auditLogs       AuditLog[] @relation("SavingsContributionAuditLogs")
 
   @@index([savingsGoalId])
   @@index([accountId])
@@ -971,7 +957,6 @@ model SavingsWithdrawal {
   journal         Journal? @relation(fields: [journalId], references: [id])
 
   // Relations
-  auditLogs       AuditLog[] @relation("SavingsWithdrawalAuditLogs")
 
   @@index([savingsGoalId])
   @@index([accountId])
@@ -1003,7 +988,6 @@ model SupportTicket {
   // Relations
   messages        SupportMessage[]
   attachments     SupportAttachment[]
-  auditLogs       AuditLog[] @relation("SupportTicketAuditLogs")
 
   @@index([userId])
   @@index([reference])
@@ -1148,7 +1132,6 @@ model SecuritySettings {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  auditLogs       AuditLog[] @relation("SecuritySettingsAuditLogs")
   sessions        Session[]
 }
 
@@ -1173,7 +1156,6 @@ model Profile {
 model AuditLog {
   id              String   @id @default(cuid())
   actorId         String?
-  actor           User?    @relation("UserAuditLogs", fields: [actorId], references: [id])
   action          AuditAction
   resourceType    ResourceType
   resourceId      String
@@ -1187,24 +1169,6 @@ model AuditLog {
   createdAt       DateTime @default(now())
 
   // Polymorphic relations for different resource types
-  user            User?    @relation("TransactionAuditLogs", fields: [resourceId], references: [id])
-  transaction     Transaction? @relation("TransactionAuditLogs", fields: [resourceId], references: [id])
-  transfer        Transfer? @relation("TransferAuditLogs", fields: [resourceId], references: [id])
-  deposit         Deposit? @relation("DepositAuditLogs", fields: [resourceId], references: [id])
-  withdrawal      Withdrawal? @relation("WithdrawalAuditLogs", fields: [resourceId], references: [id])
-  card            Card? @relation("CardAuditLogs", fields: [resourceId], references: [id])
-  beneficiary     Beneficiary? @relation("BeneficiaryAuditLogs", fields: [resourceId], references: [id])
-  kycProfile      KYCProfile? @relation("KYCAuditLogs", fields: [resourceId], references: [id])
-  kycDocument     KYCDocument? @relation("KYCDocumentAuditLogs", fields: [resourceId], references: [id])
-  loanApplication LoanApplication? @relation("LoanApplicationAuditLogs", fields: [resourceId], references: [id])
-  loanDisbursement LoanDisbursement? @relation("LoanDisbursementAuditLogs", fields: [resourceId], references: [id])
-  loanRepayment    LoanRepayment? @relation("LoanRepaymentAuditLogs", fields: [resourceId], references: [id])
-  investmentPortfolio InvestmentPortfolio? @relation("InvestmentPortfolioAuditLogs", fields: [resourceId], references: [id])
-  savingsGoal     SavingsGoal? @relation("SavingsGoalAuditLogs", fields: [resourceId], references: [id])
-  savingsContribution SavingsContribution? @relation("SavingsContributionAuditLogs", fields: [resourceId], references: [id])
-  savingsWithdrawal SavingsWithdrawal? @relation("SavingsWithdrawalAuditLogs", fields: [resourceId], references: [id])
-  supportTicket   SupportTicket? @relation("SupportTicketAuditLogs", fields: [resourceId], references: [id])
-  securitySettings SecuritySettings? @relation("SecuritySettingsAuditLogs", fields: [resourceId], references: [id])
 
   @@index([actorId])
   @@index([action])
@@ -1300,7 +1264,6 @@ model FraudAlert {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  auditLogs       AuditLog[] @relation("FraudAlertAuditLogs")
 
   @@index([userId])
   @@index([accountId])
@@ -1379,7 +1342,6 @@ model WebhookEvent {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  auditLogs       AuditLog[] @relation("WebhookEventAuditLogs")
 
   @@index([provider])
   @@index([eventType])
