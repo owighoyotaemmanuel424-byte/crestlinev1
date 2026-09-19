@@ -1200,6 +1200,14 @@ enum AuditAction {
   VERIFY
   SUSPEND
   ACTIVATE
+  REGISTER
+  RESET_PASSWORD_REQUEST
+  CANCEL
+  REPORT
+  DISMISS
+  REQUEST_INFO
+  DISBURSE
+  HOLD
 }
 
 enum ResourceType {
@@ -1230,6 +1238,10 @@ enum ResourceType {
   ROLE
   PERMISSION
   SETTING
+  FRAUD_ALERT
+  AML_CHECK
+  SESSION
+  LOAN
 }
 
 enum AuditStatus {
