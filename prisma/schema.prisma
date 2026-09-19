@@ -59,6 +59,9 @@ model User {
   assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
   resolvedSupportTickets SupportTicket[] @relation("SupportTicketResolver")
   supportMessages      SupportMessage[] @relation("SupportMessageSender")
+  fraudAlerts          FraudAlert[]
+  assignedFraudAlerts  FraudAlert[] @relation("FraudAlertAssignee")
+  resolvedFraudAlerts  FraudAlert[] @relation("FraudAlertResolver")
   securitySettings    SecuritySettings?
   profile             Profile?
 
@@ -1271,7 +1274,7 @@ model FraudAlert {
   id              String   @id @default(cuid())
   reference       String   @unique
   userId          String?
-  user            User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User?    @relation("UserFraudAlerts", fields: [userId], references: [id], onDelete: Cascade)
   accountId       String?
   account         Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactionId   String?
@@ -1287,10 +1290,10 @@ model FraudAlert {
   description     String
   status          FraudAlertStatus @default(OPEN)
   assignedToId    String?
-  assignedTo      User?    @relation(fields: [assignedToId], references: [id])
+  assignedTo      User?    @relation("FraudAlertAssignee", fields: [assignedToId], references: [id])
   resolvedAt      DateTime?
   resolvedById    String?
-  resolvedBy      User?    @relation(fields: [resolvedById], references: [id])
+  resolvedBy      User?    @relation("FraudAlertResolver", fields: [resolvedById], references: [id])
   notes           String?
   metadata        Json?
   createdAt       DateTime @default(now())
