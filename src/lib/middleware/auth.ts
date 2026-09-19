@@ -65,7 +65,7 @@ export async function authMiddleware(request: NextRequest) {
 /**
  * Extract authenticated user from request
  */
-export function getAuthUser(request: NextRequest) {
+export function getAuthUser(request: Request) {
   const userId = request.headers.get('x-user-id');
   const role = request.headers.get('x-user-role');
   const email = request.headers.get('x-user-email');
