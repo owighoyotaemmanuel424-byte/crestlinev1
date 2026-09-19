@@ -59,7 +59,7 @@ model User {
   assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
   resolvedSupportTickets SupportTicket[] @relation("SupportTicketResolver")
   supportMessages      SupportMessage[] @relation("SupportMessageSender")
-  fraudAlerts          FraudAlert[]
+  fraudAlerts          FraudAlert[] @relation("UserFraudAlerts")
   assignedFraudAlerts  FraudAlert[] @relation("FraudAlertAssignee")
   resolvedFraudAlerts  FraudAlert[] @relation("FraudAlertResolver")
   securitySettings    SecuritySettings?
