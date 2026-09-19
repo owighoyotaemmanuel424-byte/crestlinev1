@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { HTMLAttributes, forwardRef } from 'react';
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'destructive' | 'outline';
+  variant?: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'destructive' | 'outline' | 'error' | 'info';
   size?: 'sm' | 'md' | 'lg';
   dot?: boolean;
 }
@@ -18,6 +18,8 @@ const Badge = forwardRef<HTMLSpanElement, BadgeProps>(({ className, variant = 'd
     warning: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
     destructive: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
     outline: 'border border-gray-200 dark:border-gray-700',
+    error: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+    info: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
   };
   const sizes = { sm: 'px-2 py-0.5 text-xs', md: 'px-2.5 py-0.5 text-sm', lg: 'px-3 py-1 text-sm' };
   return <span ref={ref} className={cn('inline-flex items-center font-medium rounded-full', variants[variant], sizes[size], className)} {...props}>{dot && <span className="w-1.5 h-1.5 rounded-full bg-current mr-1.5" />}{children}</span>;
