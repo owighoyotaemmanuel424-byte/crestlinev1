@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAccounts, useDeposits, useToast } from '@/hooks';
 import { formatCurrency } from '@/lib/utils';
@@ -13,7 +13,7 @@ import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Dialog } from '@/components/ui/dialog';
 
-export default function DepositPage() {
+function DepositPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { accounts } = useAccounts({ limit: 100 });
@@ -176,4 +176,12 @@ export default function DepositPage() {
       </Dialog>
     </div>
   );
+
+export default function DepositPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-6">Loading...</div>}>
+      <DepositPageContent />
+    </Suspense>
+  );
+}
 }
