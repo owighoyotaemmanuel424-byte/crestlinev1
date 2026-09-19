@@ -15,4 +15,3 @@ export { useKYC, type UseKYCReturn } from './useKYC';
 export { useCards, type UseCardsReturn } from './useCards';
 export { useSettings, type UseSettingsReturn } from './useSettings';
 export { useDashboard, type UseDashboardReturn } from './useDashboard';
-export { useToast } from './useToast';
