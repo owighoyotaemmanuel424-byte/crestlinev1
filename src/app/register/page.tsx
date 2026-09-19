@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -149,9 +150,9 @@ export default function RegisterPage() {
 
         <CardFooter className="text-sm text-center text-muted-foreground">
           Already have an account?{' '}
-          <a href="/login" className="text-blue-600 hover:underline font-medium">
+          <Link href="/login" className="text-blue-600 hover:underline font-medium">
             Sign in
-          </a>
+          </Link>
         </CardFooter>
       </Card>
     </div>
