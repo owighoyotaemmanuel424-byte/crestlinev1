@@ -56,8 +56,3 @@ h (error) {
   }
 }
 
-// Verify a JWT token
-export function verifyToken(token: string): boolean {
-  // Your implementation here
-  return true;
-}
