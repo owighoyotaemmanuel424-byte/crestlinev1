@@ -9,6 +9,7 @@ on:
 env:
   NODE_VERSION: 24
   PNPM_VERSION: 11
+  DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/crestlinev1_ci?schema=public
 
 jobs:
   test:
