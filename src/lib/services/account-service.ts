@@ -58,6 +58,7 @@ export interface CreateAccountData {
   currency?: Currency;
   openingBalance?: number | string | Decimal;
   accountNumber?: string;
+  name: string;
   description?: string;
   metadata?: Record<string, unknown>;
 }
@@ -152,6 +153,7 @@ export class AccountService {
       data: {
         userId: data.userId,
         accountNumber,
+        name: data.name,
         accountType: data.accountType || ACCOUNT_CONFIG.DEFAULT_ACCOUNT_TYPE,
         currency,
         balance: openingBalance,
@@ -526,7 +528,7 @@ export class AccountService {
   static async freezeAccount(
     id: string,
     actingUserId: string,
-    reason: string
+    reason?: string
   ): Promise<AccountResult> {
     return this.updateStatus(id, 'FROZEN' as AccountStatus, actingUserId, reason);
   }
@@ -548,7 +550,7 @@ export class AccountService {
   static async closeAccount(
     id: string,
     actingUserId: string,
-    reason: string
+    reason?: string
   ): Promise<AccountResult> {
     const account = await prisma.account.findUnique({
       where: { id },
@@ -566,6 +568,29 @@ export class AccountService {
     }
 
     return this.updateStatus(id, 'CLOSED' as AccountStatus, actingUserId, reason);
+  }
+
+  static async getAccountById(id: string, actingUserId: string) {
+    return this.getById(id, actingUserId);
+  }
+
+  static async listAccounts(userId: string, options: { page?: number; limit?: number; status?: AccountStatus; accountType?: AccountType; currency?: Currency } = {}) {
+    return this.listByUser(userId, userId, options.page ?? 1, options.limit ?? 20, options.accountType, options.status, options.currency);
+  }
+
+  static async listAllAccounts(actingUserId: string, options: { page?: number; limit?: number; status?: AccountStatus; accountType?: AccountType; currency?: Currency; userId?: string } = {}) {
+    return this.listAll(actingUserId, options.page ?? 1, options.limit ?? 20, options.accountType, options.status, options.currency, options.userId);
+  }
+
+  static async updateAccount(id: string, data: UpdateAccountData, actingUserId: string) {
+    const existing = await prisma.account.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundError('Account', id);
+    if (existing.userId !== actingUserId) {
+      const actor = await prisma.user.findUnique({ where: { id: actingUserId } });
+      if (!actor || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actor.role)) throw new ForbiddenError('You do not have access to this account');
+    }
+    const account = await prisma.account.update({ where: { id }, data: { name: data.name, status: data.status } });
+    return { account, balance: toDecimal(account.balance), availableBalance: toDecimal(account.availableBalance) };
   }
 
   /**
