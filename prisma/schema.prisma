@@ -40,7 +40,8 @@ model User {
   transfersFrom       Transfer[]           @relation("FromUser")
   transfersTo         Transfer[]           @relation("ToUser")
   deposits            Deposit[]
-  withdrawals         Withdrawal[]
+  withdrawals         Withdrawal[] @relation("UserWithdrawals")
+  withdrawalReviews   Withdrawal[] @relation("WithdrawalReviews")
   cards               Card[]
   beneficiaries       Beneficiary[]
   kycProfile          KYCProfile?
@@ -413,7 +414,7 @@ model Withdrawal {
   id              String        @id @default(cuid())
   reference       String        @unique
   userId          String
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User          @relation("UserWithdrawals", fields: [userId], references: [id], onDelete: Cascade)
   accountId       String
   account         Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   amount          Decimal       @db.Decimal(20, 2)
@@ -427,7 +428,7 @@ model Withdrawal {
   idempotencyKey  String?       @unique
   reviewNotes     String?
   reviewedById    String?
-  reviewedBy      User?          @relation(fields: [reviewedById], references: [id])
+  reviewedBy      User?          @relation("WithdrawalReviews", fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
   metadata        Json?
   createdAt       DateTime      @default(now())
