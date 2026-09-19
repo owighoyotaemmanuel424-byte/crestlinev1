@@ -390,8 +390,7 @@ model Deposit {
 
   // Relations
   journal         Journal?     @relation(fields: [journalId], references: [id])
-  journalId       String?
-  transaction     Transaction?
+  journalId       String? @unique
 
   @@index([userId])
   @@index([accountId])
