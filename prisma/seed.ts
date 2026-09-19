@@ -1,4 +1,4 @@
-import { PrismaClient, Role, UserStatus, AccountType, AccountStatus, KYCStatus, KYCTier, CardType, CardBrand, CardStatus, TransactionType, TransactionStatus, TransferStatus, RiskStatus, DepositStatus, DepositMethod, WithdrawalStatus, WithdrawalMethod, BeneficiaryStatus, FeeType, LoanApplicationStatus, DisbursementStatus, RepaymentStatus, PortfolioStatus, InvestmentType, InvestmentStatus, InvestmentTransactionType, SavingsGoalStatus, ContributionStatus, SupportCategory, SupportPriority, SupportTicketStatus, NotificationType, NotificationCategory, AuditAction, ResourceType, AuditStatus, FraudAlertType, FraudAlertStatus, SettingCategory } from '@prisma/client';
+import { PrismaClient, Role, UserStatus, AccountType, AccountStatus, KYCStatus, KYCTier, CardType, CardBrand, CardStatus, TransactionType, TransactionStatus, TransferStatus, RiskStatus, DepositStatus, DepositMethod, WithdrawalStatus, WithdrawalMethod, BeneficiaryStatus, FeeType, LoanApplicationStatus, DisbursementStatus, RepaymentStatus, PortfolioStatus, InvestmentType, InvestmentStatus, InvestmentTransactionType, SavingsGoalStatus, ContributionStatus, SupportCategory, SupportPriority, SupportTicketStatus, NotificationType, NotificationCategory, AuditAction, ResourceType, AuditStatus, FraudAlertType, FraudAlertStatus, SettingCategory, JournalStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -794,7 +794,7 @@ async function main() {
       action: AuditAction.CREATE,
       resourceType: ResourceType.USER,
       resourceId: johnDoe.id,
-      oldValues: null,
+      
       newValues: { email: 'john.doe@crestline.capital', role: 'CUSTOMER' },
       metadata: { ipAddress: '192.168.1.1', userAgent: 'Mozilla/5.0' },
       status: AuditStatus.SUCCESS,
