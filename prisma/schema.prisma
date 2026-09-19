@@ -547,7 +547,6 @@ model Card {
   updatedAt       DateTime @updatedAt
 
   // Relations
-  transactions    Transaction[]
   fraudAlerts     FraudAlert[]
 
   @@index([userId])
