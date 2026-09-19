@@ -40,13 +40,13 @@ model User {
   transfersFrom       Transfer[]           @relation("FromUser")
   transfersTo         Transfer[]           @relation("ToUser")
   deposits            Deposit[]
-  withdrawals         Withdrawal[]
+  withdrawals         Withdrawal[]       @relation("UserWithdrawals")
   withdrawalReviews   Withdrawal[]      @relation("WithdrawalReviews")
   cards               Card[]
   beneficiaries       Beneficiary[]
-  kycProfile          KYCProfile?
+  kycProfile          KYCProfile?        @relation("UserKYCProfile")
   kycProfileReviews   KYCProfile[]      @relation("KYCProfileReviews")
-  kycDocuments        KYCDocument[]
+  kycDocuments        KYCDocument[]      @relation("UserKYCDocuments")
   kycDocumentReviews  KYCDocument[]     @relation("KYCDocumentReviews")
   notifications       Notification[]
   auditLogs           AuditLog[]           @relation("UserAuditLogs")
