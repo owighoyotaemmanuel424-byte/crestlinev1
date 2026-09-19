@@ -106,4 +106,4 @@ export class ApiClient {
 
 const apiClient = new ApiClient();
 
-export { apiClient };
+export const apiClient = new ApiClient();
