@@ -67,6 +67,7 @@ export interface UpdateAccountData {
   id: string;
   accountType?: AccountType;
   status?: AccountStatus;
+  name?: string;
   description?: string;
   metadata?: Record<string, unknown>;
 }
@@ -159,8 +160,6 @@ export class AccountService {
         balance: openingBalance,
         availableBalance: openingBalance,
         status: ACCOUNT_CONFIG.DEFAULT_STATUS,
-        description: data.description || null,
-        metadata: data.metadata || null,
       },
     });
 
