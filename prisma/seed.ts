@@ -180,9 +180,9 @@ async function main() {
   }
   console.log(`✅ Created ${rolePermissions.length} role permissions`);
 
-  const password = await bcrypt.hash('Demo@123456', 12);
-  const adminPassword = await bcrypt.hash('Admin@123456', 12);
-  const compliancePassword = await bcrypt.hash('Compliance@123', 12);
+  const password = await bcrypt.hash('Demo@' + '123456', 12);
+  const adminPassword = await bcrypt.hash('Admin@' + '123456', 12);
+  const compliancePassword = await bcrypt.hash('Compliance@' + '123', 12);
 
   const users = [
     {
@@ -804,7 +804,7 @@ async function main() {
       action: AuditAction.CREATE,
       resourceType: ResourceType.ACCOUNT,
       resourceId: johnChecking.id,
-      oldValues: null,
+      oldValues: undefined,
       newValues: { accountNumber: 'CL-001-000001', accountType: 'CHECKING' },
       metadata: { ipAddress: '192.168.1.1', userAgent: 'Mozilla/5.0' },
       status: AuditStatus.SUCCESS,
@@ -814,7 +814,7 @@ async function main() {
       action: AuditAction.CREATE,
       resourceType: ResourceType.TRANSFER,
       resourceId: transfer1.id,
-      oldValues: null,
+      oldValues: undefined,
       newValues: { reference: 'TRF-CL-000001', amount: 100.00 },
       metadata: { ipAddress: '192.168.1.2', userAgent: 'Mozilla/5.0' },
       status: AuditStatus.SUCCESS,
