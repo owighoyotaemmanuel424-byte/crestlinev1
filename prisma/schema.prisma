@@ -55,7 +55,7 @@ model User {
   loanApplicationReviews LoanApplication[] @relation("LoanApplicationReviews")
   savingsGoals        SavingsGoal[]
   investmentPortfolios InvestmentPortfolio[]
-  supportTickets      SupportTicket[]
+  supportTickets      SupportTicket[]    @relation("UserSupportTickets")
   assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
   resolvedSupportTickets SupportTicket[] @relation("SupportTicketResolver")
   supportMessages      SupportMessage[] @relation("SupportMessageSender")
