@@ -3,7 +3,7 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { Suspense, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useTransactions } from '@/hooks';
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 
-export default function TransactionsPage() {
+function TransactionsPageContent() {
   const searchParams = useSearchParams();
   const accountId = searchParams.get('accountId') || undefined;
   const type = searchParams.get('type') || undefined;
@@ -269,4 +269,12 @@ export default function TransactionsPage() {
       </Card>
     </div>
   );
+
+export default function TransactionsPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-6">Loading...</div>}>
+      <TransactionsPageContent />
+    </Suspense>
+  );
+}
 }
