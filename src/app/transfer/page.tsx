@@ -262,6 +262,7 @@ function TransferPageContent() {
       </Dialog>
     </div>
   );
+}
 
 export default function TransferPage() {
   return (
