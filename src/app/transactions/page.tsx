@@ -269,6 +269,7 @@ function TransactionsPageContent() {
       </Card>
     </div>
   );
+}
 
 export default function TransactionsPage() {
   return (
