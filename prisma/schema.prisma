@@ -170,6 +170,7 @@ model Journal {
 
   // Relations
   entries     LedgerEntry[]
+  transaction Transaction?
   investmentTransaction InvestmentTransaction?
   savingsContribution SavingsContribution?
   savingsWithdrawal SavingsWithdrawal?
