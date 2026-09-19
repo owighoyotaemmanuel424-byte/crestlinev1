@@ -176,6 +176,7 @@ function DepositPageContent() {
       </Dialog>
     </div>
   );
+}
 
 export default function DepositPage() {
   return (
