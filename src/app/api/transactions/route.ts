@@ -24,14 +24,16 @@ export async function GET(request: Request) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     
-    const result = await TransactionService.listTransactions(user.id, {
+    const result = await TransactionService.getUserTransactions(
+      user.id,
       page,
       limit,
-      status,
+      undefined,
       type,
-      startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-    });
+      status,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined
+    );
     
     return paginated(result.transactions, result.page, result.limit, result.total);
   });

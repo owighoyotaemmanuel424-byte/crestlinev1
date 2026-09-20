@@ -1,7 +1,7 @@
 import { prisma } from '../prisma';
 import bcrypt from 'bcryptjs';
 import { generateToken, generateIdempotencyKey } from '../utils/security';
-import { ForbiddenError, NotFoundError, ValidationError, AuthError } from '../utils/errors';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError, AuthError } from '../utils/errors';
 import type { User, Session, UserStatus, Role } from '@prisma/client';
 
 export interface RegisterData {

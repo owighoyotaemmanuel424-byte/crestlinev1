@@ -1,178 +1,290 @@
 // src/app/deposit/page.tsx
-// Deposit Page
+// Deposit funds
 
 'use client';
 
 import { Suspense, useState } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { CheckCircle2, Download, Landmark } from 'lucide-react';
+
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
+import { EmptyState, LoadingRows } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
+import { Select } from '@/components/ui/select';
 import { useAccounts, useDeposits, useToast } from '@/hooks';
 import { formatCurrency } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Select } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Dialog } from '@/components/ui/dialog';
+
+const METHODS = [
+  { value: 'bank_transfer', label: 'Bank transfer' },
+  { value: 'cash', label: 'Cash deposit' },
+  { value: 'mobile_money', label: 'Mobile money' },
+];
 
 function DepositPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { accounts } = useAccounts({ limit: 100 });
-  const { createDeposit } = useDeposits();
   const { success, error: showError } = useToast();
-  
-  const [formData, setFormData] = useState({
+
+  const accounts = useAccounts({ limit: 100 });
+  const { createDeposit } = useDeposits();
+
+  const [form, setForm] = useState({
     accountId: searchParams.get('accountId') || '',
-    amount: 0,
+    amount: '',
     method: 'bank_transfer',
     description: '',
   });
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [depositRef, setDepositRef] = useState('');
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [reference, setReference] = useState('');
+  const [formError, setFormError] = useState('');
 
-  const account = accounts.find(a => a.id === formData.accountId);
-
-  const canProceed = formData.accountId && formData.amount > 0;
+  const account = accounts.accounts.find((item) => item.id === form.accountId);
+  const amountValue = Number(form.amount) || 0;
+  const canSubmit = Boolean(form.accountId) && amountValue > 0;
 
   const handleSubmit = async () => {
+    setConfirmOpen(false);
     setIsSubmitting(true);
-    setShowConfirm(false);
+    setFormError('');
     try {
       const deposit = await createDeposit({
-        accountId: formData.accountId,
-        amount: formData.amount * 100,
-        currency: 'NGN',
-        method: formData.method,
-        description: formData.description,
-        idempotencyKey: 'deposit-' + Date.now(),
-      });
-      setDepositRef(deposit.reference);
-      success('Deposit submitted!', 'Success');
-    } catch (err: any) {
-      showError(err.message || 'Deposit failed');
+        accountId: form.accountId,
+        amount: Math.round(amountValue * 100),
+        currency: account?.currency || 'USD',
+        method: form.method,
+        description: form.description || `Deposit via ${form.method.replace('_', ' ')}`,
+        idempotencyKey: `deposit-${Date.now()}`,
+      } as any);
+      setReference(deposit.reference || '');
+      success('Deposit submitted for confirmation', 'Deposit created');
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Deposit failed';
+      setFormError(message);
+      showError(message, 'Deposit failed');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (depositRef) {
+  if (reference) {
     return (
-      <div className="container mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-6">Deposit Complete</h1>
-        <Card className="p-8 text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <span className="text-2xl">✓</span>
-          </div>
-          <h2 className="text-xl font-bold mb-2">Deposit Successful!</h2>
-          <p className="text-muted-foreground mb-4">Reference: {depositRef}</p>
-          <div className="flex gap-4 justify-center">
-            <Button onClick={() => router.push('/accounts')}>
-              View Accounts
+      <div>
+        <PageHeader eyebrow="Add funds" title="Deposit complete" />
+        <div className="chase-card mx-auto max-w-xl p-8 text-center">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/10 text-success">
+            <CheckCircle2 className="h-7 w-7" />
+          </span>
+          <h2 className="mt-5 text-xl font-semibold tracking-tight">Deposit received</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            {formatCurrency(amountValue, account?.currency || 'USD')} is being credited to{' '}
+            {account?.name}.
+          </p>
+          <p className="mt-4 rounded-lg bg-muted px-4 py-3 font-mono text-sm">{reference}</p>
+          <div className="mt-6 flex flex-col justify-center gap-2.5 sm:flex-row">
+            <Button asChild>
+              <Link href="/accounts">View accounts</Link>
             </Button>
-            <Button variant="outline" onClick={() => router.push('/deposit')}>
-              New Deposit
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReference('');
+                setForm({ accountId: '', amount: '', method: 'bank_transfer', description: '' });
+              }}
+            >
+              Make another deposit
             </Button>
           </div>
-        </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Deposit Funds</h1>
-      
-      <Card className="p-8 mb-6">
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium mb-2">Account</label>
-            <Select
-              value={formData.accountId}
-              onValueChange={(v) => setFormData(p => ({ ...p, accountId: v }))}
-              placeholder="Select account"
-            >
-              {accounts.map((acc) => (
-                <Select.Option key={acc.id} value={acc.id}>
-                  {acc.name} ({acc.accountType}) - {formatCurrency(acc.balance)}
-                </Select.Option>
-              ))}
-            </Select>
-          </div>
+    <div>
+      <PageHeader
+        eyebrow="Add funds"
+        title="Deposit money"
+        description="Top up any account by bank transfer, cash or mobile money. Funds appear once the deposit is confirmed."
+        actions={
+          <Button asChild variant="ghost">
+            <Link href="/accounts">Back to accounts</Link>
+          </Button>
+        }
+      />
 
-          <div>
-            <label className="block text-sm font-medium mb-2">Amount (NGN)</label>
-            <Input
-              type="number"
-              value={formData.amount || ''}
-              onChange={(e) => setFormData(p => ({ ...p, amount: Number(e.target.value) }))}
-              placeholder="0.00"
-              min="0"
-              step="0.01"
+      {formError && (
+        <Alert variant="destructive" className="mb-5">
+          <AlertDescription>{formError}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
+        <div className="chase-card p-6 sm:p-7">
+          {accounts.isLoading ? (
+            <LoadingRows rows={3} />
+          ) : accounts.accounts.length === 0 ? (
+            <EmptyState
+              icon={Landmark}
+              title="No accounts to deposit into"
+              description="Open an account first and it will appear here."
+              action={
+                <Button asChild>
+                  <Link href="/accounts">View accounts</Link>
+                </Button>
+              }
             />
-          </div>
+          ) : (
+            <div className="space-y-5">
+              <Select
+                label="Deposit into"
+                value={form.accountId}
+                onValueChange={(value) => setForm((previous) => ({ ...previous, accountId: value }))}
+                placeholder="Select an account"
+                icon={Landmark}
+              >
+                {accounts.accounts.map((item) => (
+                  <Select.Option key={item.id} value={item.id}>
+                    {item.name} · {formatCurrency(item.balance, item.currency)}
+                  </Select.Option>
+                ))}
+              </Select>
 
-          <div>
-            <label className="block text-sm font-medium mb-2">Deposit Method</label>
-            <Select
-              value={formData.method}
-              onValueChange={(v) => setFormData(p => ({ ...p, method: v }))}
-            >
-              <Select.Option value="bank_transfer">Bank Transfer</Select.Option>
-              <Select.Option value="cash">Cash Deposit</Select.Option>
-              <Select.Option value="mobile_money">Mobile Money</Select.Option>
-            </Select>
-          </div>
+              <Input
+                type="number"
+                inputMode="decimal"
+                label={`Amount (${account?.currency || 'USD'})`}
+                value={form.amount}
+                onChange={(event) =>
+                  setForm((previous) => ({ ...previous, amount: event.target.value }))
+                }
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                hint="Minimum deposit is 1.00"
+              />
 
-          <div>
-            <label className="block text-sm font-medium mb-2">Description (Optional)</label>
-            <Input
-              value={formData.description}
-              onChange={(e) => setFormData(p => ({ ...p, description: e.target.value }))}
-              placeholder="Deposit description"
-            />
-          </div>
+              <Select
+                label="Deposit method"
+                value={form.method}
+                onValueChange={(value) => setForm((previous) => ({ ...previous, method: value }))}
+              >
+                {METHODS.map((method) => (
+                  <Select.Option key={method.value} value={method.value}>
+                    {method.label}
+                  </Select.Option>
+                ))}
+              </Select>
 
-          {account && formData.amount > 0 && (
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <h3 className="font-medium mb-2">Summary</h3>
-              <div className="flex justify-between">
-                <span>Account:</span>
-                <span>{account.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Amount:</span>
-                <span className="font-medium">{formatCurrency(formData.amount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Method:</span>
-                <span>{formData.method.replace('_', ' ')}</span>
-              </div>
+              <Input
+                label="Description (optional)"
+                value={form.description}
+                onChange={(event) =>
+                  setForm((previous) => ({ ...previous, description: event.target.value }))
+                }
+                placeholder="e.g. Monthly savings"
+              />
             </div>
           )}
         </div>
-      </Card>
 
-      <div className="flex justify-between">
-        <Button variant="outline" onClick={() => router.push('/accounts')}>
-          Cancel
-        </Button>
-        <Button onClick={() => setShowConfirm(true)} disabled={!canProceed || isSubmitting}>
-          Submit Deposit
-        </Button>
-      </div>
+        <div className="space-y-5">
+          <div className="chase-card p-6">
+            <h2 className="text-base font-semibold tracking-tight">Deposit summary</h2>
+            <dl className="mt-5 space-y-3.5 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-muted-foreground">Account</dt>
+                <dd className="text-right font-medium">{account?.name || '—'}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-muted-foreground">Method</dt>
+                <dd className="text-right font-medium capitalize">
+                  {form.method.replace('_', ' ')}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-muted-foreground">Fee</dt>
+                <dd className="font-medium text-success">Free</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4 border-t border-border pt-3.5">
+                <dt className="font-semibold">Total credit</dt>
+                <dd className="text-lg font-bold">
+                  {formatCurrency(amountValue, account?.currency || 'USD')}
+                </dd>
+              </div>
+            </dl>
 
-      <Dialog open={showConfirm} onOpenChange={(open) => setShowConfirm(open)} title="Confirm Deposit">
-        <div className="py-4">
-          <p className="mb-4">Are you sure you want to deposit {formatCurrency(formData.amount)} to {account?.name}?</p>
-          <div className="flex gap-4 justify-end">
-            <Button variant="outline" onClick={() => setShowConfirm(false)}>
-              Cancel
+            <Button
+              className="mt-6 w-full"
+              size="lg"
+              disabled={!canSubmit}
+              isLoading={isSubmitting}
+              onClick={() => setConfirmOpen(true)}
+            >
+              <Download className="h-4 w-4" />
+              Submit deposit
             </Button>
-            <Button onClick={handleSubmit} isLoading={isSubmitting}>
-              Confirm
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              Deposits are reviewed for compliance. You will get a notification the moment
+              funds are available.
+            </p>
+          </div>
+
+          <div className="chase-card p-6">
+            <h3 className="text-sm font-semibold text-foreground">How long does it take?</h3>
+            <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+              <li>Bank transfer — usually the same business day</li>
+              <li>Cash deposit — instantly once confirmed at a branch</li>
+              <li>Mobile money — a few minutes</li>
+            </ul>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mt-4 px-0"
+              onClick={() => router.push('/support')}
+            >
+              Questions about a deposit?
             </Button>
           </div>
         </div>
+      </div>
+
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Confirm your deposit"
+        description="Check the details before we submit this deposit for processing."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+              Go back
+            </Button>
+            <Button onClick={handleSubmit} isLoading={isSubmitting}>
+              Confirm deposit
+            </Button>
+          </>
+        }
+      >
+        <dl className="space-y-3.5 text-sm">
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-muted-foreground">Amount</dt>
+            <dd className="text-lg font-bold">
+              {formatCurrency(amountValue, account?.currency || 'USD')}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-muted-foreground">Into</dt>
+            <dd className="text-right font-medium">{account?.name}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-muted-foreground">Method</dt>
+            <dd className="font-medium capitalize">{form.method.replace('_', ' ')}</dd>
+          </div>
+        </dl>
       </Dialog>
     </div>
   );
@@ -180,7 +292,11 @@ function DepositPageContent() {
 
 export default function DepositPage() {
   return (
-    <Suspense fallback={<div className="container mx-auto p-6">Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="py-20 text-center text-sm text-muted-foreground">Loading deposit…</div>
+      }
+    >
       <DepositPageContent />
     </Suspense>
   );

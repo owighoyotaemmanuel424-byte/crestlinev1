@@ -4,25 +4,57 @@ import { cn } from '@/lib/utils';
 import { HTMLAttributes, forwardRef } from 'react';
 
 export interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
-  variant?: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'destructive' | 'outline' | 'error' | 'info';
+  variant?:
+    | 'default'
+    | 'primary'
+    | 'secondary'
+    | 'neutral'
+    | 'success'
+    | 'warning'
+    | 'destructive'
+    | 'outline'
+    | 'error'
+    | 'info';
   size?: 'sm' | 'md' | 'lg';
   dot?: boolean;
 }
 
-const Badge = forwardRef<HTMLSpanElement, BadgeProps>(({ className, variant = 'default', size = 'md', dot = false, children, ...props }, ref) => {
-  const variants = {
-    default: 'bg-secondary text-secondary-foreground',
-    primary: 'bg-primary text-primary-foreground',
-    secondary: 'bg-secondary text-secondary-foreground',
-    success: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-    warning: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
-    destructive: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-    outline: 'border border-gray-200 dark:border-gray-700',
-    error: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-    info: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  };
-  const sizes = { sm: 'px-2 py-0.5 text-xs', md: 'px-2.5 py-0.5 text-sm', lg: 'px-3 py-1 text-sm' };
-  return <span ref={ref} className={cn('inline-flex items-center font-medium rounded-full', variants[variant], sizes[size], className)} {...props}>{dot && <span className="w-1.5 h-1.5 rounded-full bg-current mr-1.5" />}{children}</span>;
-});
+const VARIANT_STYLES: Record<string, string> = {
+  default: 'bg-secondary text-secondary-foreground ring-1 ring-inset ring-border',
+  neutral: 'bg-secondary text-secondary-foreground ring-1 ring-inset ring-border',
+  secondary: 'bg-secondary text-secondary-foreground ring-1 ring-inset ring-border',
+  primary: 'bg-accent text-accent-foreground ring-1 ring-inset ring-primary/25',
+  info: 'bg-accent text-accent-foreground ring-1 ring-inset ring-primary/25',
+  success: 'bg-success/10 text-success ring-1 ring-inset ring-success/25',
+  warning: 'bg-warning/10 text-warning ring-1 ring-inset ring-warning/25',
+  destructive: 'bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/25',
+  error: 'bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/25',
+  outline: 'border border-border text-muted-foreground',
+};
+
+const SIZE_STYLES: Record<string, string> = {
+  sm: 'px-2 py-0.5 text-[0.6875rem]',
+  md: 'px-2.5 py-1 text-xs',
+  lg: 'px-3 py-1 text-sm',
+};
+
+const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
+  ({ className, variant = 'default', size = 'md', dot = false, children, ...props }, ref) => (
+    <span
+      ref={ref}
+      className={cn(
+        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-semibold capitalize tracking-wide',
+        VARIANT_STYLES[variant],
+        SIZE_STYLES[size],
+        className
+      )}
+      {...props}
+    >
+      {dot && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+      {children}
+    </span>
+  )
+);
 Badge.displayName = 'Badge';
+
 export { Badge };

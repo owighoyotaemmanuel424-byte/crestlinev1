@@ -77,9 +77,12 @@ export function useDeposits(initialParams?: DepositListParams): UseDepositsRetur
     }
   }, [refetch]);
 
+  const paramsKey = JSON.stringify(initialParams ?? {});
+
   useEffect(() => {
     refetch(initialParams);
-  }, [refetch, initialParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsKey]);
 
   return {
     ...state,

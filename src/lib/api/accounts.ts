@@ -94,7 +94,9 @@ class AccountsApi {
     if (!backendResponse.success) {
       throw backendResponse;
     }
-    return (backendResponse as BackendSuccessResponse<Account>).data;
+    // The route wraps the account in `{ account }`.
+    const payload = (backendResponse as BackendSuccessResponse<Account & { account?: Account }>).data;
+    return (payload?.account ?? payload) as Account;
   }
 
   async createAccount(data: CreateAccountData): Promise<Account> {

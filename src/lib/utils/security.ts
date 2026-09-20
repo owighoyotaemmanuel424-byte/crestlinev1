@@ -46,15 +46,48 @@ export function maskSensitiveData(data: string, visibleChars: number = 4): strin
   return data.slice(0, visibleChars) + '*' + data.slice(-visibleChars);
 }
 
-export function verifyToken(token: string): { userId: string; role: string; iat?: number; exp?: number } {
+export interface AuthTokenPayload {
+  sub: string;
+  userId: string;
+  role: string;
+  email?: string;
+  iat?: number;
+  exp?: number;
+}
+
+/**
+ * Shared signing secret. Production must provide JWT_SECRET; the sandbox
+ * fallback keeps a fresh checkout usable without extra configuration.
+ */
+export function getJwtSecret(): string {
+  return process.env.JWT_SECRET || 'crestline-sandbox-dev-secret';
+}
+
+/**
+ * Issue the bearer token consumed by the API middleware. `sub` is what the
+ * middleware forwards as the authenticated user id.
+ */
+export function signAuthToken(payload: {
+  userId: string;
+  role: string;
+  email?: string;
+}): string {
+  return jwt.sign(
+    { sub: payload.userId, userId: payload.userId, role: payload.role, email: payload.email },
+    getJwtSecret(),
+    { expiresIn: '7d' }
+  );
+}
+
+export function verifyToken(token: string): AuthTokenPayload {
   try {
-    return jwt.verify(token, process.env.JWT_SECRET || '') as { userId: string; role: string; iat?: number; exp?: number };
+    return jwt.verify(token, getJwtSecret()) as AuthTokenPayload;
   } catch {
     throw new Error('Invalid token');
   }
 }
 
-export function verifyHash(payload: string, signature: string, secret: string = process.env.JWT_SECRET || ''): boolean {
+export function verifyHash(payload: string, signature: string, secret: string = getJwtSecret()): boolean {
   const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(expected, 'utf8'), Buffer.from(signature, 'utf8'));

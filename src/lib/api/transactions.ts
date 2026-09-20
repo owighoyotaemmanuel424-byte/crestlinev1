@@ -88,7 +88,9 @@ class TransactionsApi {
     if (!backendResponse.success) {
       throw backendResponse;
     }
-    return (backendResponse as BackendSuccessResponse<Transaction>).data;
+    // The route wraps the transaction in `{ transaction }`.
+    const payload = (backendResponse as BackendSuccessResponse<Transaction & { transaction?: Transaction }>).data;
+    return (payload?.transaction ?? payload) as Transaction;
   }
 
   // Admin methods

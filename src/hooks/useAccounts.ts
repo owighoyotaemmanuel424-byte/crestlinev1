@@ -62,10 +62,15 @@ export function useAccounts(initialParams?: AccountListParams): UseAccountsRetur
     }
   }, [state.page, state.limit]);
 
+  // Keyed on the serialised params so a fresh object literal from the caller
+  // does not trigger an endless refetch loop.
+  const paramsKey = JSON.stringify(initialParams ?? {});
+
   // Initial fetch
   useEffect(() => {
     refetch(initialParams);
-  }, [refetch, initialParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsKey]);
 
   return {
     ...state,

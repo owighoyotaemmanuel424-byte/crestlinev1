@@ -3,158 +3,214 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { CheckCircle2, Eye, EyeOff } from 'lucide-react';
+
+import { AuthLayout } from '@/components/auth-layout';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+
+const PASSWORD_RULES = [
+  { label: 'At least 8 characters', test: (value: string) => value.length >= 8 },
+  { label: 'A number', test: (value: string) => /\d/.test(value) },
+  { label: 'An uppercase letter', test: (value: string) => /[A-Z]/.test(value) },
+];
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [formData, setFormData] = useState({
+  const [form, setForm] = useState({
     firstName: '',
     lastName: '',
     email: '',
     password: '',
     confirmPassword: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  const update = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((previous) => ({ ...previous, [key]: event.target.value }));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
 
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      setIsLoading(false);
+    if (form.password !== form.confirmPassword) {
+      setError('Those passwords do not match.');
+      return;
+    }
+    if (form.password.length < 8) {
+      setError('Choose a password with at least 8 characters.');
+      return;
+    }
+    if (!acceptedTerms) {
+      setError('Please accept the account terms to continue.');
       return;
     }
 
+    setIsLoading(true);
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          password: formData.password,
+          firstName: form.firstName.trim(),
+          lastName: form.lastName.trim(),
+          email: form.email.trim(),
+          password: form.password,
         }),
       });
+      const payload = await response.json().catch(() => null);
 
-      if (!response.ok) {
-        const data = await response.json();
-        setError(data.error || 'Registration failed');
+      if (!response.ok || payload?.success === false) {
+        setError(
+          payload?.message ||
+            payload?.error ||
+            'We could not open your account. Please review your details and try again.'
+        );
         return;
       }
 
-      const data = await response.json();
-      localStorage.setItem('token', data.token);
-      router.push('/dashboard');
-    } catch (err) {
-      setError('Network error. Please try again.');
+      const token = payload?.data?.token ?? payload?.token;
+      if (token) {
+        window.localStorage.setItem('token', token);
+      }
+      router.replace('/dashboard');
+    } catch {
+      setError('We could not reach Crestline Capital. Check your connection and try again.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-lg shadow-xl">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-3xl font-bold text-center">
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Create Account
-            </span>
-          </CardTitle>
-          <CardDescription className="text-center">
-            Join Crestline Capital today
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Input
-                type="text"
-                name="firstName"
-                label="First Name"
-                value={formData.firstName}
-                onChange={handleChange}
-                placeholder="John"
-                required
-              />
-              <Input
-                type="text"
-                name="lastName"
-                label="Last Name"
-                value={formData.lastName}
-                onChange={handleChange}
-                placeholder="Doe"
-                required
-              />
-            </div>
-
-            <Input
-              type="email"
-              name="email"
-              label="Email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="john@crestline.com"
-              required
-            />
-
-            <Input
-              type="password"
-              name="password"
-              label="Password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="Create a strong password"
-              required
-            />
-
-            <Input
-              type="password"
-              name="confirmPassword"
-              label="Confirm Password"
-              value={formData.confirmPassword}
-              onChange={handleChange}
-              placeholder="Confirm your password"
-              required
-            />
-
-            <Button
-              type="submit"
-              className="w-full"
-              isLoading={isLoading}
-              size="lg"
-            >
-              Create Account
-            </Button>
-          </form>
-        </CardContent>
-
-        <CardFooter className="text-sm text-center text-muted-foreground">
-          Already have an account?{' '}
-          <Link href="/login" className="text-blue-600 hover:underline font-medium">
+    <AuthLayout
+      title="Open your account"
+      subtitle="It takes about four minutes. You will need your name and email to get started."
+      highlights={[
+        'No monthly service fees on everyday checking',
+        'Instant notifications for every payment',
+        'Add savings goals, cards and beneficiaries later',
+      ]}
+      footer={
+        <p>
+          Already bank with us?{' '}
+          <Link href="/login" className="chase-link">
             Sign in
           </Link>
-        </CardFooter>
-      </Card>
-    </div>
+        </p>
+      }
+    >
+      {error && (
+        <Alert variant="destructive" className="mb-5">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Input
+            label="First name"
+            value={form.firstName}
+            onChange={update('firstName')}
+            placeholder="Jordan"
+            autoComplete="given-name"
+            required
+          />
+          <Input
+            label="Last name"
+            value={form.lastName}
+            onChange={update('lastName')}
+            placeholder="Adeyemi"
+            autoComplete="family-name"
+            required
+          />
+        </div>
+
+        <Input
+          type="email"
+          label="Email address"
+          value={form.email}
+          onChange={update('email')}
+          placeholder="you@example.com"
+          autoComplete="email"
+          hint="We use this for sign-in and account notices."
+          required
+        />
+
+        <div className="relative">
+          <Input
+            type={showPassword ? 'text' : 'password'}
+            label="Password"
+            value={form.password}
+            onChange={update('password')}
+            placeholder="Create a strong password"
+            autoComplete="new-password"
+            required
+            className="pr-11"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((visible) => !visible)}
+            className="absolute right-1 top-[2.4rem] rounded p-2 text-muted-foreground transition-colors hover:text-foreground"
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+
+        <ul className="grid gap-1.5 sm:grid-cols-3">
+          {PASSWORD_RULES.map((rule) => {
+            const met = rule.test(form.password);
+            return (
+              <li
+                key={rule.label}
+                className={
+                  'flex items-center gap-1.5 text-xs ' +
+                  (met ? 'text-success' : 'text-muted-foreground')
+                }
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {rule.label}
+              </li>
+            );
+          })}
+        </ul>
+
+        <Input
+          type={showPassword ? 'text' : 'password'}
+          label="Confirm password"
+          value={form.confirmPassword}
+          onChange={update('confirmPassword')}
+          placeholder="Re-enter your password"
+          autoComplete="new-password"
+          error={
+            form.confirmPassword && form.confirmPassword !== form.password
+              ? 'Passwords do not match'
+              : undefined
+          }
+          required
+        />
+
+        <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={acceptedTerms}
+            onChange={(event) => setAcceptedTerms(event.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-primary/30"
+          />
+          <span>
+            I agree to the Crestline Capital account terms and understand this is a
+            sandbox demonstration environment.
+          </span>
+        </label>
+
+        <Button type="submit" size="lg" className="w-full" isLoading={isLoading}>
+          Open my account
+        </Button>
+      </form>
+    </AuthLayout>
   );
 }
