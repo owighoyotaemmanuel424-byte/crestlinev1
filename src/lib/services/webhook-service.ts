@@ -21,6 +21,7 @@ import type {
   DepositStatus,
   WithdrawalStatus,
   TransferStatus,
+  WithdrawalMethod,
 } from '@prisma/client';
 
 // ============================================
@@ -61,9 +62,7 @@ export interface ProcessedWebhookEvent {
 }
 
 export interface WebhookEventResult {
-  event: WebhookEvent & {
-    processedEvents: ProcessedWebhookEvent[];
-  };
+  event: WebhookEvent;
 }
 
 export interface WebhookEventListResult {
@@ -256,13 +255,13 @@ export class WebhookService {
 
     // Check for duplicate (idempotency check)
     const existingEvent = await prisma.webhookEvent.findFirst({
-      where: { idempotencyKey },
+      where: { eventId: idempotencyKey },
     });
 
     if (existingEvent) {
       // Return existing event if duplicate
       const result = await this.getWebhookEventById(existingEvent.id);
-      return { event: { ...result.event, processedEvents: result.event.processedEvents || [] } };
+      return { event: result.event };
     }
 
     // Verify signature if provided
@@ -273,19 +272,13 @@ export class WebhookService {
     // Create webhook event record
     const event = await prisma.webhookEvent.create({
       data: {
-        reference: generateReference('WHK'),
+        eventId: idempotencyKey,
         provider: data.provider,
         eventType: data.eventType,
-        idempotencyKey,
-        payload: data.payload,
+        payload: data.payload as any,
         rawPayload: data.rawPayload,
         signature: data.signature || null,
-        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
         status: 'PENDING' as WebhookEventStatus,
-        metadata: data.metadata || null,
-      },
-      include: {
-        processedEvents: true,
       },
     });
 
@@ -299,9 +292,7 @@ export class WebhookService {
         data: {
           status: 'COMPLETED' as WebhookEventStatus,
           processedAt: new Date(),
-        },
-        include: {
-          processedEvents: true,
+          processed: true,
         },
       });
 
@@ -315,7 +306,7 @@ export class WebhookService {
           newValues: {
             provider: data.provider,
             eventType: data.eventType,
-            status: 'COMPLETED',
+            status: 'COMPLETED' as WebhookEventStatus,
             processedEventsCount: processedEvents.length,
           },
           metadata: {
@@ -326,7 +317,7 @@ export class WebhookService {
         },
       });
 
-      return { event: { ...updatedEvent, processedEvents } };
+      return { event: updatedEvent };
     } catch (error) {
       // Update event status to failed
       await prisma.webhookEvent.update({
@@ -348,7 +339,7 @@ export class WebhookService {
           newValues: {
             provider: data.provider,
             eventType: data.eventType,
-            status: 'FAILED',
+            status: 'FAILED' as WebhookEventStatus,
           },
           errorMessage: error instanceof Error ? error.message : 'Unknown error',
           metadata: {
@@ -403,10 +394,10 @@ export class WebhookService {
       await prisma.auditLog.create({
         data: {
           actorId: 'SYSTEM',
-          action: 'WEBHOOK_PROCESSED',
-          resourceType: processedEvent.resourceType,
+          action: 'PROCESS',
+          resourceType: 'WEBHOOK_EVENT',
           resourceId: processedEvent.resourceId,
-          newValues: processedEvent.payload,
+          newValues: processedEvent.payload as any,
           metadata: {
             webhookEventId: event.id,
             provider: event.provider,
@@ -522,8 +513,8 @@ export class WebhookService {
           await this.processPaymentSuccess(
             event,
             resource.id as string,
-            Number(resource.amount?.value || 0),
-            resource.amount?.currency_code as string || 'USD',
+            Number((resource.amount as any)?.value || 0),
+            (resource.amount as any)?.currency_code as string || 'USD',
             resource.custom as Record<string, unknown> || {},
             'PAYPAL'
           )
@@ -535,8 +526,8 @@ export class WebhookService {
           await this.processPaymentRefunded(
             event,
             resource.id as string,
-            Number(resource.amount?.value || 0),
-            resource.amount?.currency_code as string || 'USD',
+            Number((resource.amount as any)?.value || 0),
+            (resource.amount as any)?.currency_code as string || 'USD',
             resource.custom as Record<string, unknown> || {},
             'PAYPAL'
           )
@@ -548,10 +539,10 @@ export class WebhookService {
           await this.processPaymentFailed(
             event,
             resource.id as string,
-            Number(resource.amount?.value || 0),
-            resource.amount?.currency_code as string || 'USD',
-            resource.failure?.code as string,
-            resource.failure?.description as string,
+            Number((resource.amount as any)?.value || 0),
+            (resource.amount as any)?.currency_code as string || 'USD',
+            resource.failure ? (resource.failure as any).code as string : '',
+            resource.failure ? (resource.failure as any).description as string : '',
             resource.custom as Record<string, unknown> || {},
             'PAYPAL'
           )
@@ -564,8 +555,8 @@ export class WebhookService {
           await this.processTransfer(
             event,
             resource.id as string,
-            Number(resource.amount?.value || 0),
-            resource.amount?.currency_code as string || 'USD',
+            Number((resource.amount as any)?.value || 0),
+            (resource.amount as any)?.currency_code as string || 'USD',
             resource.sender as string,
             resource.recipient as string,
             resource.custom as Record<string, unknown> || {},
@@ -590,17 +581,17 @@ export class WebhookService {
     payload: Record<string, unknown>
   ): Promise<ProcessedWebhookEvent[]> {
     const processedEvents: ProcessedWebhookEvent[] = [];
-    const data = payload.payload as Record<string, unknown> || payload;
+    const data: any = (payload.payload as Record<string, unknown>) || payload;
 
     switch (event.eventType) {
       case 'payment.captured':
         processedEvents.push(
           await this.processPaymentSuccess(
             event,
-            data.payment?.entity?.id as string,
-            Number(data.payment?.entity?.amount || 0) / 100, // Razorpay amounts are in paise
-            data.payment?.entity?.currency as string || 'USD',
-            data.payment?.entity?.notes as Record<string, unknown> || {},
+            (data.payment as any)?.entity?.id as string,
+            Number((data.payment as any)?.entity?.amount || 0) / 100, // Razorpay amounts are in paise
+            (data.payment as any)?.entity?.currency as string || 'USD',
+            (data.payment as any)?.entity?.notes as Record<string, unknown> || {},
             'RAZORPAY'
           )
         );
@@ -610,12 +601,12 @@ export class WebhookService {
         processedEvents.push(
           await this.processPaymentFailed(
             event,
-            data.payment?.entity?.id as string,
-            Number(data.payment?.entity?.amount || 0) / 100,
-            data.payment?.entity?.currency as string || 'USD',
-            data.payment?.entity?.error_code as string,
-            data.payment?.entity?.error_description as string,
-            data.payment?.entity?.notes as Record<string, unknown> || {},
+            (data.payment as any)?.entity?.id as string,
+            Number((data.payment as any)?.entity?.amount || 0) / 100,
+            (data.payment as any)?.entity?.currency as string || 'USD',
+            (data.payment as any)?.entity?.error_code as string,
+            (data.payment as any)?.entity?.error_description as string,
+            (data.payment as any)?.entity?.notes as Record<string, unknown> || {},
             'RAZORPAY'
           )
         );
@@ -742,8 +733,8 @@ export class WebhookService {
     payload: Record<string, unknown>
   ): Promise<ProcessedWebhookEvent[]> {
     const processedEvents: ProcessedWebhookEvent[] = [];
-    const data = payload.data as Record<string, unknown> || payload;
-    const object = data.object as Record<string, unknown> || data;
+    const data = (payload.data as Record<string, unknown>) || payload;
+    const object = ((data.object as Record<string, unknown>) || data) as any;
 
     switch (event.eventType) {
       case 'payment.created':
@@ -882,7 +873,7 @@ export class WebhookService {
       eventType: event.eventType,
       resourceType: payload.resourceType as string || 'CUSTOM',
       resourceId: payload.resourceId as string || generateReference('CUST'),
-      status: 'COMPLETED',
+      status: 'COMPLETED' as WebhookEventStatus,
       payload,
       processedAt: new Date(),
     };
@@ -919,7 +910,7 @@ export class WebhookService {
         eventType: event.eventType,
         resourceType: 'DEPOSIT',
         resourceId: existingDeposit.id,
-        status: 'REPLAYED',
+        status: 'REPLAYED' as WebhookEventStatus,
         payload: { depositId: existingDeposit.id, amount, currency },
         processedAt: new Date(),
       };
@@ -985,13 +976,6 @@ export class WebhookService {
           providerPaymentId: paymentId,
           provider,
         },
-        journal: {
-          create: {
-            reference: generateReference('JNL'),
-            description: `Deposit from ${provider}: ${paymentId}`,
-            status: 'POSTED' as const,
-          },
-        },
       },
     });
 
@@ -999,7 +983,7 @@ export class WebhookService {
     await prisma.auditLog.create({
       data: {
         actorId: 'SYSTEM',
-        action: 'DEPOSIT',
+        action: 'CREATE',
         resourceType: 'DEPOSIT',
         resourceId: deposit.id,
         newValues: { userId, accountId, amount, currency, provider },
@@ -1015,7 +999,7 @@ export class WebhookService {
       eventType: event.eventType,
       resourceType: 'DEPOSIT',
       resourceId: deposit.id,
-      status: 'COMPLETED',
+      status: 'COMPLETED' as WebhookEventStatus,
       payload: { depositId: deposit.id, userId, accountId, amount, currency },
       processedAt: new Date(),
     };
@@ -1042,8 +1026,8 @@ export class WebhookService {
     await prisma.auditLog.create({
       data: {
         actorId: 'SYSTEM',
-        action: 'PAYMENT_FAILED',
-        resourceType: 'PAYMENT',
+        action: 'REPORT',
+        resourceType: 'TRANSACTION',
         resourceId: paymentId,
         newValues: { userId, accountId, amount, currency, provider },
         errorMessage: `${errorCode}: ${errorMessage}`,
@@ -1062,9 +1046,9 @@ export class WebhookService {
       reference: generateReference('WHK-FAIL'),
       provider,
       eventType: event.eventType,
-      resourceType: 'PAYMENT',
+      resourceType: 'TRANSACTION',
       resourceId: paymentId,
-      status: 'COMPLETED',
+      status: 'COMPLETED' as WebhookEventStatus,
       payload: { paymentId, userId, accountId, amount, currency, errorCode, errorMessage },
       processedAt: new Date(),
     };
@@ -1092,7 +1076,7 @@ export class WebhookService {
         data: {
           actorId: 'SYSTEM',
           action: 'REFUND',
-          resourceType: 'PAYMENT',
+          resourceType: 'DEPOSIT',
           resourceId: paymentId,
           errorMessage: 'Original deposit not found',
           metadata: { webhookEventId: event.id, paymentId },
@@ -1107,7 +1091,7 @@ export class WebhookService {
         eventType: event.eventType,
         resourceType: 'PAYMENT',
         resourceId: paymentId,
-        status: 'COMPLETED',
+        status: 'COMPLETED' as WebhookEventStatus,
         errorMessage: 'Original deposit not found',
         payload: { paymentId, amount, currency },
         processedAt: new Date(),
@@ -1140,7 +1124,7 @@ export class WebhookService {
       eventType: event.eventType,
       resourceType: 'DEPOSIT',
       resourceId: deposit.id,
-      status: 'COMPLETED',
+      status: 'COMPLETED' as WebhookEventStatus,
       payload: { depositId: deposit.id, amount, currency },
       processedAt: new Date(),
     };
@@ -1162,7 +1146,7 @@ export class WebhookService {
   ): Promise<ProcessedWebhookEvent> {
     // Check if this transfer already exists
     const existingTransfer = await prisma.transfer.findFirst({
-      where: { providerReference: transferId },
+      where: { metadata: { path: ['providerTransferId'], equals: transferId } },
     });
 
     if (existingTransfer) {
@@ -1174,7 +1158,7 @@ export class WebhookService {
         eventType: event.eventType,
         resourceType: 'TRANSFER',
         resourceId: existingTransfer.id,
-        status: 'REPLAYED',
+        status: 'REPLAYED' as WebhookEventStatus,
         payload: { transferId: existingTransfer.id, amount, currency },
         processedAt: new Date(),
       };
@@ -1216,12 +1200,12 @@ export class WebhookService {
         description: `Transfer from ${provider}: ${transferId}`,
         status: isCompleted ? 'COMPLETED' : 'PROCESSING' as TransferStatus,
         riskStatus: 'LOW' as const,
-        provider,
-        providerReference: transferId,
         metadata: {
           ...metadata,
           webhookEventId: event.id,
           providerEventType: event.eventType,
+          provider,
+          providerTransferId: transferId,
         },
       },
     });
@@ -1289,7 +1273,7 @@ export class WebhookService {
     await prisma.auditLog.create({
       data: {
         actorId: 'SYSTEM',
-        action: 'TRANSFER',
+        action: 'CREATE',
         resourceType: 'TRANSFER',
         resourceId: transfer.id,
         newValues: { fromUserId, toUserId, fromAccountId, toAccountId, amount, currency, provider },
@@ -1305,7 +1289,7 @@ export class WebhookService {
       eventType: event.eventType,
       resourceType: 'TRANSFER',
       resourceId: transfer.id,
-      status: 'COMPLETED',
+      status: 'COMPLETED' as WebhookEventStatus,
       payload: { transferId: transfer.id, fromUserId, toUserId, amount, currency },
       processedAt: new Date(),
     };
@@ -1328,7 +1312,7 @@ export class WebhookService {
     await prisma.auditLog.create({
       data: {
         actorId: 'SYSTEM',
-        action: 'TRANSFER_FAILED',
+        action: 'REPORT',
         resourceType: 'TRANSFER',
         resourceId: transferId,
         newValues: { amount, currency, provider },
@@ -1350,7 +1334,7 @@ export class WebhookService {
       eventType: event.eventType,
       resourceType: 'TRANSFER',
       resourceId: transferId,
-      status: 'COMPLETED',
+      status: 'COMPLETED' as WebhookEventStatus,
       payload: { transferId, amount, currency, errorCode, errorMessage },
       processedAt: new Date(),
     };
@@ -1369,7 +1353,7 @@ export class WebhookService {
   ): Promise<ProcessedWebhookEvent> {
     // Find the original transfer
     const transfer = await prisma.transfer.findFirst({
-      where: { providerReference: transferId },
+      where: { metadata: { path: ['providerTransferId'], equals: transferId } },
     });
 
     if (!transfer) {
@@ -1393,7 +1377,7 @@ export class WebhookService {
         eventType: event.eventType,
         resourceType: 'TRANSFER',
         resourceId: transferId,
-        status: 'COMPLETED',
+        status: 'COMPLETED' as WebhookEventStatus,
         errorMessage: 'Original transfer not found',
         payload: { transferId, amount, currency },
         processedAt: new Date(),
@@ -1426,7 +1410,7 @@ export class WebhookService {
       eventType: event.eventType,
       resourceType: 'TRANSFER',
       resourceId: transfer.id,
-      status: 'COMPLETED',
+      status: 'COMPLETED' as WebhookEventStatus,
       payload: { transferId: transfer.id, amount, currency },
       processedAt: new Date(),
     };
@@ -1520,9 +1504,6 @@ export class WebhookService {
           provider,
           destination,
         },
-        withdrawal: {
-          connect: { id: withdrawal.id },
-        },
       },
     });
 
@@ -1530,7 +1511,7 @@ export class WebhookService {
     await prisma.auditLog.create({
       data: {
         actorId: 'SYSTEM',
-        action: 'PAYOUT',
+        action: 'CREATE',
         resourceType: 'WITHDRAWAL',
         resourceId: withdrawal.id,
         newValues: { userId, accountId, amount, currency, destination, provider },
@@ -1546,7 +1527,7 @@ export class WebhookService {
       eventType: event.eventType,
       resourceType: 'WITHDRAWAL',
       resourceId: withdrawal.id,
-      status: 'COMPLETED',
+      status: 'COMPLETED' as WebhookEventStatus,
       payload: { withdrawalId: withdrawal.id, userId, accountId, amount, currency, destination },
       processedAt: new Date(),
     };
@@ -1562,9 +1543,7 @@ export class WebhookService {
   static async getWebhookEventById(id: string): Promise<WebhookEventResult> {
     const event = await prisma.webhookEvent.findUnique({
       where: { id },
-      include: {
-        processedEvents: true,
-      },
+
     });
 
     if (!event) throw new NotFoundError('Webhook Event', id);
@@ -1579,10 +1558,8 @@ export class WebhookService {
     reference: string
   ): Promise<WebhookEventResult> {
     const event = await prisma.webhookEvent.findUnique({
-      where: { reference },
-      include: {
-        processedEvents: true,
-      },
+      where: { eventId: reference },
+
     });
 
     if (!event) throw new NotFoundError('Webhook Event', reference);
@@ -1609,7 +1586,7 @@ export class WebhookService {
       throw new ForbiddenError('Only authorized personnel can view webhook events');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
 
     if (provider) where.provider = provider;
     if (eventType) where.eventType = { contains: eventType, mode: 'insensitive' };
@@ -1632,9 +1609,7 @@ export class WebhookService {
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: {
-        processedEvents: true,
-      },
+
     });
 
     const total = await prisma.webhookEvent.count({ where });
@@ -1674,13 +1649,8 @@ export class WebhookService {
       throw new ValidationError(`Unknown webhook provider: ${provider}`);
     }
 
-    // Get the signature secret from the database
-    // In production, this would be stored securely
-    const webhookConfig = await prisma.webhookConfig.findUnique({
-      where: { provider },
-    });
-
-    const secret = webhookConfig?.signatureSecret || process.env[`${provider}_WEBHOOK_SECRET`];
+    // Get the signature secret from the environment
+    const secret = process.env[`${provider.toUpperCase()}_WEBHOOK_SECRET`];
 
     if (!secret) {
       throw new ValidationError(`No signature secret configured for provider: ${provider}`);
@@ -1886,9 +1856,7 @@ export class WebhookService {
     const recentEvents = await prisma.webhookEvent.findMany({
       take: 10,
       orderBy: { createdAt: 'desc' },
-      include: {
-        processedEvents: true,
-      },
+
     });
 
     return {
@@ -2006,22 +1974,22 @@ export class WebhookService {
   /**
    * Get withdrawal method from provider
    */
-  private static getWithdrawalMethod(provider: string): 'ACH' | 'WIRE' | 'CARD' | 'MOBILE' | 'CRYPTO' {
+  private static getWithdrawalMethod(provider: string): WithdrawalMethod {
     switch (provider.toUpperCase()) {
       case 'STRIPE':
         return 'CARD';
       case 'PAYPAL':
-        return 'MOBILE';
+        return 'CRYPTO';
       case 'RAZORPAY':
         return 'CARD';
       case 'FLUTTERWAVE':
-        return 'MOBILE';
+        return 'CHECK';
       case 'SQUARE':
         return 'CARD';
       case 'PLACID':
-        return 'MOBILE';
+        return 'CASH';
       default:
-        return 'WIRE';
+        return 'BANK_TRANSFER';
     }
   }
 }
