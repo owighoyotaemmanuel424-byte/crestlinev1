@@ -118,7 +118,7 @@ export interface ContributionResult {
   };
 }
 
-export interface WithdrawalResult {
+export interface SavingsWithdrawalResult {
   withdrawal: SavingsWithdrawal & {
     savingsGoal: Pick<SavingsGoal, 'id' | 'name' | 'userId'>;
     account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
@@ -143,8 +143,8 @@ export interface ContributionListResult {
   totalPages: number;
 }
 
-export interface WithdrawalListResult {
-  withdrawals: WithdrawalResult['withdrawal'][];
+export interface SavingsWithdrawalListResult {
+  withdrawals: SavingsWithdrawalResult['withdrawal'][];
   total: number;
   page: number;
   limit: number;
@@ -890,7 +890,7 @@ export class SavingsService {
   static async withdraw(
     data: WithdrawData,
     actingUserId: string
-  ): Promise<WithdrawalResult['withdrawal']> {
+  ): Promise<SavingsWithdrawalResult['withdrawal']> {
     const goal = await prisma.savingsGoal.findUnique({ where: { id: data.savingsGoalId } });
     if (!goal) throw new NotFoundError('Savings Goal', data.savingsGoalId);
 
@@ -1027,7 +1027,7 @@ export class SavingsService {
   static async getWithdrawalById(
     id: string,
     actingUserId: string
-  ): Promise<WithdrawalResult['withdrawal']> {
+  ): Promise<SavingsWithdrawalResult['withdrawal']> {
     const withdrawal = await prisma.savingsWithdrawal.findUnique({
       where: { id },
       include: {
@@ -1073,7 +1073,7 @@ export class SavingsService {
     status?: WithdrawalStatus,
     startDate?: Date,
     endDate?: Date
-  ): Promise<WithdrawalListResult> {
+  ): Promise<SavingsWithdrawalListResult> {
     const goal = await prisma.savingsGoal.findUnique({ where: { id: savingsGoalId } });
     if (!goal) throw new NotFoundError('Savings Goal', savingsGoalId);
 
@@ -1286,7 +1286,7 @@ export class SavingsService {
       account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
       journal?: Journal | null;
     }
-  ): WithdrawalResult['withdrawal'] {
+  ): SavingsWithdrawalResult['withdrawal'] {
     return withdrawal;
   }
 }
