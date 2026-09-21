@@ -34,6 +34,10 @@ model User {
   role          Role       @default(CUSTOMER)
   emailVerified Boolean   @default(false)
   phoneVerified Boolean   @default(false)
+  lastIpAddress     String?
+  lastDeviceId      String?
+  lastLoginLocation String?
+  lastLoginAt       DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -65,6 +69,9 @@ model User {
   resolvedFraudAlerts  FraudAlert[] @relation("FraudAlertResolver")
   assignedSupportTickets SupportTicket[] @relation("SupportTicketAssignee")
   resolvedSupportTickets SupportTicket[] @relation("SupportTicketResolver")
+  loans               Loan[] @relation("UserLoans")
+  investments         Investment[] @relation("UserInvestments")
+  amlChecks           AMLCheck[] @relation("UserAMChecks")
   securitySettings    SecuritySettings?
   profile             Profile?
 
@@ -143,6 +150,9 @@ model Account {
   @@index([userId])
   @@index([accountNumber])
   @@index([status])
+  loans             Loan[] @relation("AccountLoans")
+  amlChecks         AMLCheck[] @relation("AccountAMLChecks")
+  investments       Investment[] @relation("AccountInvestments")
 }
 
 enum AccountType {
@@ -257,6 +267,7 @@ model Transaction {
   @@index([type])
   @@index([status])
   @@index([createdAt])
+  amlChecks         AMLCheck[] @relation("TransactionAMLChecks")
 }
 
 enum TransactionType {
@@ -464,6 +475,7 @@ model Withdrawal {
 
 enum WithdrawalMethod {
   ACH
+  BANK_TRANSFER
   WIRE
   CARD
   CASH
@@ -612,7 +624,9 @@ model KYCProfile {
 
 enum KYCStatus {
   PENDING
+  SUBMITTED
   UNDER_REVIEW
+  REQUESTED_CHANGES
   APPROVED
   REJECTED
   EXPIRED
@@ -655,6 +669,7 @@ model KYCDocument {
 }
 
 enum KYCDocumentType {
+  GOVERNMENT_ID
   PASSPORT
   DRIVERS_LICENSE
   NATIONAL_ID
@@ -812,14 +827,28 @@ enum PortfolioStatus {
 
 model Investment {
   id              String   @id @default(cuid())
+  reference       String?  @unique
   portfolioId     String
   portfolio       InvestmentPortfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?    @relation("UserInvestments", fields: [userId], references: [id])
+  accountId       String?
+  account         Account? @relation("AccountInvestments", fields: [accountId], references: [id])
   symbol          String
   name            String
   investmentType  InvestmentType
   quantity        Decimal @db.Decimal(20, 8)
   purchasePrice   Decimal @db.Decimal(20, 2)
   currentPrice    Decimal? @db.Decimal(20, 2)
+  amount          Decimal?  @db.Decimal(20, 2)
+  currency        String    @default("USD")
+  durationDays    Int?
+  maturityDate    DateTime?
+  interestRate    Decimal?  @db.Decimal(8, 4)
+  projectedReturns Decimal? @db.Decimal(20, 2)
+  riskLevel       String?
+  description     String?
+  liquidatedAt    DateTime?
   purchasedAt     DateTime @default(now())
   status          InvestmentStatus @default(ACTIVE)
   metadata        Json?
@@ -933,6 +962,8 @@ model SavingsContribution {
   status          ContributionStatus @default(COMPLETED)
   journalId       String? @unique
   journal         Journal? @relation(fields: [journalId], references: [id])
+  idempotencyKey  String?  @unique
+  metadata        Json?
 
   // Relations
 
@@ -961,6 +992,8 @@ model SavingsWithdrawal {
   status          WithdrawalStatus @default(COMPLETED)
   journalId       String? @unique
   journal         Journal? @relation(fields: [journalId], references: [id])
+  idempotencyKey  String?  @unique
+  metadata        Json?
 
   // Relations
 
@@ -990,6 +1023,7 @@ model SupportTicket {
   resolvedBy      User?    @relation("SupportTicketResolver", fields: [resolvedById], references: [id])
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  metadata        Json?
 
   // Relations
   messages        SupportMessage[]
@@ -1044,7 +1078,9 @@ model SupportMessage {
   sender          User     @relation("SupportMessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   message         String
   isInternal      Boolean  @default(false)
+  isRead          Boolean  @default(false)
   createdAt       DateTime @default(now())
+  metadata        Json?
 
   // Relations
   attachments     SupportAttachment[]
@@ -1114,6 +1150,14 @@ enum NotificationCategory {
   SUPPORT
   SYSTEM
   PROMOTION
+  ACCOUNT
+  COMPLIANCE
+  FRAUD
+  CARD
+  GOAL
+  PORTFOLIO
+  TICKET
+  PROFILE
 }
 
 // ============================================
@@ -1211,6 +1255,16 @@ enum AuditAction {
   REQUEST_INFO
   DISBURSE
   HOLD
+  PROCESS
+  TRANSFER_REVERSED
+  ASSIGN
+  REPLAY
+  REFUND
+  RESET_PASSWORD
+  LIQUIDATE
+  MATURE
+  REVERSE
+  SUBMIT
 }
 
 enum ResourceType {
@@ -1245,6 +1299,7 @@ enum ResourceType {
   AML_CHECK
   SESSION
   LOAN
+  WEBHOOK_EVENT
 }
 
 enum AuditStatus {
@@ -1269,6 +1324,9 @@ model FraudAlert {
   card            Card? @relation(fields: [cardId], references: [id], onDelete: Cascade)
   alertType       FraudAlertType
   riskScore       Int
+  riskLevel       String?   @default("LOW")
+  amount          Decimal?  @db.Decimal(20, 2)
+  currency        String?   @default("USD")
   description     String
   status          FraudAlertStatus @default(OPEN)
   assignedToId    String?
@@ -1344,11 +1402,21 @@ model RateLimit {
 // WEBHOOKS
 // ============================================
 
+enum WebhookEventStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  DUPLICATE
+  REPLAYED
+}
+
 model WebhookEvent {
   id              String   @id @default(cuid())
   eventId         String   @unique
   provider        String
   eventType       String
+  status          WebhookEventStatus @default(PENDING)
   payload         Json
   rawPayload      String?
   signature       String?
@@ -1420,4 +1488,100 @@ model RolePermission {
   @@unique([role, permissionId])
   @@index([role])
   @@index([permissionId])
+}
+
+// ============================================
+// LOAN (service-managed loan accounts)
+// ============================================
+enum LoanType {
+  PERSONAL
+  BUSINESS
+  MORTGAGE
+  AUTO
+  STUDENT
+}
+
+enum RepaymentFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+model Loan {
+  id                String   @id @default(cuid())
+  reference         String   @unique
+  userId            String
+  user              User     @relation("UserLoans", fields: [userId], references: [id], onDelete: Cascade)
+  accountId         String
+  account           Account  @relation("AccountLoans", fields: [accountId], references: [id], onDelete: Cascade)
+  loanType          LoanType
+  amount            Decimal  @db.Decimal(20, 2)
+  currency          String   @default("USD")
+  durationDays      Int
+  interestRate      Decimal  @default(0) @db.Decimal(8, 4)
+  totalInterest     Decimal  @default(0) @db.Decimal(20, 2)
+  totalRepayment    Decimal  @default(0) @db.Decimal(20, 2)
+  totalRepaid       Decimal  @default(0) @db.Decimal(20, 2)
+  repaymentFrequency RepaymentFrequency @default(MONTHLY)
+  maturityDate      DateTime?
+  processingFee     Decimal  @default(0) @db.Decimal(20, 2)
+  netDisbursement   Decimal  @default(0) @db.Decimal(20, 2)
+  status            String   @default("PENDING")
+  description       String?
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId])
+  @@index([accountId])
+  @@index([status])
+}
+
+// ============================================
+// AML CHECK (compliance screening records)
+// ============================================
+enum AMLStatus {
+  PENDING
+  CLEARED
+  FLAGGED
+  BLOCKED
+  UNDER_REVIEW
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model AMLCheck {
+  id                String    @id @default(cuid())
+  reference         String    @unique
+  userId            String
+  user              User      @relation("UserAMChecks", fields: [userId], references: [id], onDelete: Cascade)
+  accountId         String?
+  account           Account?  @relation("AccountAMLChecks", fields: [accountId], references: [id])
+  transactionId     String?
+  transaction       Transaction? @relation("TransactionAMLChecks", fields: [transactionId], references: [id])
+  amount            Decimal   @db.Decimal(20, 2)
+  currency          String    @default("USD")
+  counterpartyId    String?
+  counterpartyName  String?
+  counterpartyAccount String?
+  description       String?
+  riskScore         Int       @default(0)
+  riskLevel         RiskLevel @default(LOW)
+  status            AMLStatus @default(PENDING)
+  requiresReview    Boolean   @default(false)
+  requiresApproval  Boolean   @default(false)
+  reviewedById      String?
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([riskLevel])
 }

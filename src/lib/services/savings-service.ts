@@ -98,7 +98,7 @@ export interface WithdrawData {
 }
 
 export interface SavingsGoalResult {
-  goal: SavingsGoal & {
+  goal: Omit<SavingsGoal, 'currentAmount'> & {
     user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'>;
     contributions: SavingsContribution[];
     withdrawals: SavingsWithdrawal[];
@@ -201,7 +201,7 @@ export class SavingsService {
   static async createSavingsGoal(
     data: CreateSavingsGoalData,
     actingUserId: string
-  ): Promise<SavingsGoalResult> {
+  ): Promise<SavingsGoalResult['goal']> {
     const user = await prisma.user.findUnique({ where: { id: data.userId } });
     if (!user) throw new NotFoundError('User', data.userId);
 
@@ -274,7 +274,7 @@ export class SavingsService {
   static async getSavingsGoalById(
     id: string,
     actingUserId: string
-  ): Promise<SavingsGoalResult> {
+  ): Promise<SavingsGoalResult['goal']> {
     const goal = await prisma.savingsGoal.findUnique({
       where: { id },
       include: {
@@ -338,7 +338,7 @@ export class SavingsService {
       }
     }
 
-    const where: Record<string, unknown> = { userId };
+    const where: any = { userId };
     if (status) where.status = status;
     if (search) where.name = { contains: search, mode: 'insensitive' };
 
@@ -397,7 +397,7 @@ export class SavingsService {
       throw new ForbiddenError('Only authorized personnel can view all savings goals');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (status) where.status = status;
     if (search) {
       where.OR = [
@@ -455,7 +455,7 @@ export class SavingsService {
     id: string,
     data: UpdateSavingsGoalData,
     actingUserId: string
-  ): Promise<SavingsGoalResult> {
+  ): Promise<SavingsGoalResult['goal']> {
     const goal = await prisma.savingsGoal.findUnique({
       where: { id },
       include: {
@@ -533,7 +533,7 @@ export class SavingsService {
   /**
    * Complete a savings goal
    */
-  static async completeSavingsGoal(id: string, actingUserId: string): Promise<SavingsGoalResult> {
+  static async completeSavingsGoal(id: string, actingUserId: string): Promise<SavingsGoalResult['goal']> {
     const goal = await prisma.savingsGoal.findUnique({
       where: { id },
       include: {
@@ -594,7 +594,7 @@ export class SavingsService {
     await prisma.auditLog.create({
       data: {
         actorId: actingUserId,
-        action: 'COMPLETE',
+        action: 'UPDATE',
         resourceType: 'SAVINGS_GOAL',
         resourceId: goal.id,
         oldValues: { status: goal.status },
@@ -629,7 +629,7 @@ export class SavingsService {
   static async contribute(
     data: ContributeData,
     actingUserId: string
-  ): Promise<ContributionResult> {
+  ): Promise<ContributionResult['contribution']> {
     const goal = await prisma.savingsGoal.findUnique({ where: { id: data.savingsGoalId } });
     if (!goal) throw new NotFoundError('Savings Goal', data.savingsGoalId);
 
@@ -688,7 +688,7 @@ export class SavingsService {
         contributedAt: new Date(),
         status: 'COMPLETED' as ContributionStatus,
         idempotencyKey: data.idempotencyKey || generateIdempotencyKey(),
-        metadata: data.metadata || null,
+        metadata: data.metadata as any,
       },
       include: {
         savingsGoal: {
@@ -706,7 +706,6 @@ export class SavingsService {
           },
         },
         journal: true,
-        transaction: true,
       },
     });
 
@@ -753,7 +752,7 @@ export class SavingsService {
           accountId: data.accountId,
           amount: amount.toString(),
         },
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         status: 'SUCCESS',
       },
     });
@@ -766,7 +765,7 @@ export class SavingsService {
     if (updatedGoal) {
       const updatedCurrent = toDecimal(updatedGoal.currentAmount);
       const target = toDecimal(updatedGoal.targetAmount);
-      if (updatedCurrent.greaterThanOrEqual(target)) {
+      if (updatedCurrent.greaterThanOrEqualTo(target)) {
         await this.completeSavingsGoal(data.savingsGoalId, actingUserId);
       }
     }
@@ -780,7 +779,7 @@ export class SavingsService {
   static async getContributionById(
     id: string,
     actingUserId: string
-  ): Promise<ContributionResult> {
+  ): Promise<ContributionResult['contribution']> {
     const contribution = await prisma.savingsContribution.findUnique({
       where: { id },
       include: {
@@ -799,7 +798,6 @@ export class SavingsService {
           },
         },
         journal: true,
-        transaction: true,
       },
     });
 
@@ -839,7 +837,7 @@ export class SavingsService {
       }
     }
 
-    const where: Record<string, unknown> = { savingsGoalId };
+    const where: any = { savingsGoalId };
     if (status) where.status = status;
     if (startDate || endDate) {
       where.contributedAt = {};
@@ -868,7 +866,6 @@ export class SavingsService {
           },
         },
         journal: true,
-        transaction: true,
       },
     });
 
@@ -893,7 +890,7 @@ export class SavingsService {
   static async withdraw(
     data: WithdrawData,
     actingUserId: string
-  ): Promise<WithdrawalResult> {
+  ): Promise<WithdrawalResult['withdrawal']> {
     const goal = await prisma.savingsGoal.findUnique({ where: { id: data.savingsGoalId } });
     if (!goal) throw new NotFoundError('Savings Goal', data.savingsGoalId);
 
@@ -952,7 +949,7 @@ export class SavingsService {
         withdrawnAt: new Date(),
         status: 'COMPLETED' as WithdrawalStatus,
         idempotencyKey: data.idempotencyKey || generateIdempotencyKey(),
-        metadata: data.metadata || null,
+        metadata: data.metadata as any,
       },
       include: {
         savingsGoal: {
@@ -970,7 +967,6 @@ export class SavingsService {
           },
         },
         journal: true,
-        transaction: true,
       },
     });
 
@@ -1017,7 +1013,7 @@ export class SavingsService {
           accountId: data.accountId,
           amount: amount.toString(),
         },
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         status: 'SUCCESS',
       },
     });
@@ -1031,7 +1027,7 @@ export class SavingsService {
   static async getWithdrawalById(
     id: string,
     actingUserId: string
-  ): Promise<WithdrawalResult> {
+  ): Promise<WithdrawalResult['withdrawal']> {
     const withdrawal = await prisma.savingsWithdrawal.findUnique({
       where: { id },
       include: {
@@ -1050,7 +1046,6 @@ export class SavingsService {
           },
         },
         journal: true,
-        transaction: true,
       },
     });
 
@@ -1090,7 +1085,7 @@ export class SavingsService {
       }
     }
 
-    const where: Record<string, unknown> = { savingsGoalId };
+    const where: any = { savingsGoalId };
     if (status) where.status = status;
     if (startDate || endDate) {
       where.withdrawnAt = {};
@@ -1119,7 +1114,6 @@ export class SavingsService {
           },
         },
         journal: true,
-        transaction: true,
       },
     });
 
@@ -1244,7 +1238,7 @@ export class SavingsService {
       contributions: SavingsContribution[];
       withdrawals: SavingsWithdrawal[];
     }
-  ): Promise<SavingsGoalResult> {
+  ): Promise<SavingsGoalResult['goal']> {
     const currentAmount = toDecimal(goal.currentAmount);
     const targetAmount = toDecimal(goal.targetAmount);
     const progressPercent = targetAmount.greaterThan(0) 
@@ -1262,13 +1256,11 @@ export class SavingsService {
     }
 
     return {
-      goal: {
-        ...goal,
-        progressPercent,
-        currentAmount: currentAmount.toNumber(),
-        remainingAmount,
-        daysRemaining,
-      },
+      ...goal,
+      progressPercent,
+      currentAmount: currentAmount.toNumber(),
+      remainingAmount,
+      daysRemaining,
     };
   }
 
@@ -1280,10 +1272,9 @@ export class SavingsService {
       savingsGoal: Pick<SavingsGoal, 'id' | 'name' | 'userId'>;
       account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
       journal?: Journal | null;
-      transaction?: Transaction | null;
     }
-  ): ContributionResult {
-    return { contribution };
+  ): ContributionResult['contribution'] {
+    return contribution;
   }
 
   /**
@@ -1294,9 +1285,8 @@ export class SavingsService {
       savingsGoal: Pick<SavingsGoal, 'id' | 'name' | 'userId'>;
       account: Pick<Account, 'id' | 'accountNumber' | 'userId'>;
       journal?: Journal | null;
-      transaction?: Transaction | null;
     }
-  ): WithdrawalResult {
-    return { withdrawal };
+  ): WithdrawalResult['withdrawal'] {
+    return withdrawal;
   }
 }
