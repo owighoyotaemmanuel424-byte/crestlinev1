@@ -656,6 +656,7 @@ model KYCDocument {
   reviewedById    String?
   reviewedBy      User?    @relation("KYCDocumentReviews", fields: [reviewedById], references: [id])
   reviewedAt      DateTime?
+  metadata        Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

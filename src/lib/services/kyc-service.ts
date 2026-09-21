@@ -114,7 +114,6 @@ export class KYCService {
     const profileReference = generateReference('KYC');
     const profile = await prisma.kYCProfile.create({
       data: {
-        reference: profileReference,
         userId: data.userId,
         tier: data.tier || ('TIER_1' as KYCTierType),
         status: 'PENDING' as KYCStatusType,
@@ -131,7 +130,7 @@ export class KYCService {
         action: 'CREATE',
         resourceType: 'KYC_PROFILE',
         resourceId: profile.id,
-        newValues: { reference: profile.reference, tier: profile.tier, status: profile.status },
+        newValues: { tier: profile.tier, status: profile.status },
         status: 'SUCCESS',
       },
     });
@@ -197,10 +196,10 @@ export class KYCService {
     if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(actingUser.role)) {
       throw new ForbiddenError('Only administrators or compliance officers can view all KYC profiles');
     }
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (search) {
       where.OR = [
-        { reference: { contains: search, mode: 'insensitive' } },
+        { notes: { contains: search, mode: 'insensitive' } },
         { user: { firstName: { contains: search, mode: 'insensitive' } } },
         { user: { lastName: { contains: search, mode: 'insensitive' } } },
         { user: { email: { contains: search, mode: 'insensitive' } } },
@@ -237,7 +236,7 @@ export class KYCService {
         APPROVED: ['APPROVED', 'EXPIRED', 'SUSPENDED'],
         REJECTED: ['REJECTED', 'PENDING'],
         EXPIRED: ['EXPIRED', 'PENDING', 'SUBMITTED'],
-        SUSPENDED: ['SUSPENDED', 'ACTIVE'],
+        SUSPENDED: ['SUSPENDED', 'PENDING'],
       };
       const currentStatus = profile.status as KYCStatusType;
       const allowedTransitions = validTransitions[currentStatus] || [];
@@ -261,7 +260,7 @@ export class KYCService {
       include: { user: { select: { id: true, email: true, firstName: true, lastName: true } }, documents: true },
     });
     await prisma.auditLog.create({
-      data: { actorId: actingUserId, action: 'UPDATE', resourceType: 'KYC_PROFILE', resourceId: profile.id, oldValues, newValues: updateData, status: 'SUCCESS' },
+      data: { actorId: actingUserId, action: 'UPDATE', resourceType: 'KYC_PROFILE', resourceId: profile.id, oldValues: oldValues as any, newValues: updateData as any, status: 'SUCCESS' },
     });
     return { profile: updatedProfile };
   }
@@ -277,13 +276,12 @@ export class KYCService {
       const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
       if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(actingUser.role)) throw new ForbiddenError('Only administrators or compliance officers can submit documents for other users');
     }
-    const existingDocument = await prisma.kYCDocument.findFirst({ where: { profileId: profile.id, documentType: data.documentType } });
+    const existingDocument = await prisma.kYCDocument.findFirst({ where: { kycProfileId: profile.id, documentType: data.documentType } });
     if (existingDocument) throw new ConflictError(`Document of type ${data.documentType} already exists for this profile`);
     const documentReference = generateReference('KYC-DOC');
     const document = await prisma.kYCDocument.create({
       data: {
-        reference: documentReference,
-        profileId: profile.id,
+        kycProfileId: profile.id,
         userId: data.userId,
         documentType: data.documentType,
         fileName: data.fileName,
@@ -291,9 +289,9 @@ export class KYCService {
         fileSize: data.fileSize,
         mimeType: data.mimeType,
         status: 'PENDING' as DocumentStatusType,
-        metadata: data.metadata || {},
+        metadata: data.metadata as any,
       },
-      include: { profile: { select: { id: true, userId: true, tier: true, status: true } } },
+      include: { kycProfile: { select: { id: true, userId: true, tier: true, status: true } } },
     });
     await prisma.auditLog.create({
       data: {
@@ -301,7 +299,7 @@ export class KYCService {
         action: 'CREATE',
         resourceType: 'KYC_DOCUMENT',
         resourceId: document.id,
-        newValues: { reference: document.reference, documentType: document.documentType, fileName: document.fileName },
+        newValues: { documentType: document.documentType, fileName: document.fileName },
         status: 'SUCCESS',
       },
     });
@@ -311,7 +309,7 @@ export class KYCService {
   static async getDocumentById(id: string, actingUserId?: string): Promise<DocumentResult> {
     const document = await prisma.kYCDocument.findUnique({
       where: { id },
-      include: { profile: { select: { id: true, userId: true, tier: true, status: true } } },
+      include: { kycProfile: { select: { id: true, userId: true, tier: true, status: true } } },
     });
     if (!document) throw new NotFoundError('KYC Document', id);
     if (actingUserId && actingUserId !== document.userId) {
@@ -322,21 +320,21 @@ export class KYCService {
   }
 
   static async reviewDocument(data: ReviewDocumentData, actingUserId: string): Promise<DocumentResult> {
-    const document = await prisma.kYCDocument.findUnique({ where: { id: data.documentId }, include: { profile: true } });
+    const document = await prisma.kYCDocument.findUnique({ where: { id: data.documentId }, include: { kycProfile: true } });
     if (!document) throw new NotFoundError('KYC Document', data.documentId);
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(actingUser.role)) throw new ForbiddenError('Only administrators or compliance officers can review KYC documents');
-    const oldValues = { status: document.status, reviewNotes: document.reviewNotes, rejectionReason: document.rejectionReason };
+    const oldValues = { status: document.status, reviewNotes: document.reviewNotes };
     const updateData: Record<string, unknown> = { status: data.status, reviewedAt: new Date(), reviewedById: actingUserId };
     if (data.reviewNotes !== undefined) updateData.reviewNotes = data.reviewNotes;
     if (data.rejectionReason !== undefined) updateData.rejectionReason = data.rejectionReason;
     const updatedDocument = await prisma.kYCDocument.update({
       where: { id: data.documentId },
       data: updateData,
-      include: { profile: { select: { id: true, userId: true, tier: true, status: true } } },
+      include: { kycProfile: { select: { id: true, userId: true, tier: true, status: true } } },
     });
     await prisma.auditLog.create({
-      data: { actorId: actingUserId, action: 'REVIEW', resourceType: 'KYC_DOCUMENT', resourceId: document.id, oldValues, newValues: updateData, status: 'SUCCESS' },
+      data: { actorId: actingUserId, action: 'REVIEW', resourceType: 'KYC_DOCUMENT', resourceId: document.id, oldValues: oldValues as any, newValues: updateData as any, status: 'SUCCESS' },
     });
     return { document: updatedDocument };
   }
@@ -348,7 +346,7 @@ export class KYCService {
     if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(actingUser.role)) throw new ForbiddenError('Only administrators or compliance officers can delete KYC documents');
     await prisma.kYCDocument.delete({ where: { id } });
     await prisma.auditLog.create({
-      data: { actorId: actingUserId, action: 'DELETE', resourceType: 'KYC_DOCUMENT', resourceId: document.id, oldValues: { reference: document.reference, documentType: document.documentType }, status: 'SUCCESS' },
+      data: { actorId: actingUserId, action: 'DELETE', resourceType: 'KYC_DOCUMENT', resourceId: document.id, oldValues: { documentType: document.documentType }, status: 'SUCCESS' },
     });
   }
 
@@ -360,7 +358,7 @@ export class KYCService {
     const approved = await prisma.kYCProfile.count({ where: { status: 'APPROVED' } });
     const rejected = await prisma.kYCProfile.count({ where: { status: 'REJECTED' } });
     const tiers = await prisma.kYCProfile.groupBy({ by: ['tier'], _count: { _all: true } });
-    const byTier: Record<KYCTier, number> = { TIER_1: 0, TIER_2: 0, TIER_3: 0, TIER_4: 0 };
+    const byTier: Record<string, number> = { TIER_0: 0, TIER_1: 0, TIER_2: 0, TIER_3: 0 };
     for (const t of tiers) { const tier = t.tier as KYCTier; if (byTier[tier] !== undefined) byTier[tier] = t._count._all; }
     return { totalProfiles, pending, approved, rejected, byTier };
   }
@@ -377,11 +375,11 @@ export class KYCService {
   }
 
   static async getRequiredDocumentsForTier(tier: KYCTierType): Promise<KYCDocumentType[]> {
-    const tierRequirements: Record<KYCTierType, KYCDocumentType[]> = {
+    const tierRequirements: Record<string, KYCDocumentType[]> = {
+      TIER_0: [],
       TIER_1: ['GOVERNMENT_ID', 'SELFIE'],
       TIER_2: ['GOVERNMENT_ID', 'SELFIE', 'PROOF_OF_ADDRESS'],
-      TIER_3: ['GOVERNMENT_ID', 'SELFIE', 'PROOF_OF_ADDRESS', 'PROOF_OF_INCOME'],
-      TIER_4: ['GOVERNMENT_ID', 'SELFIE', 'PROOF_OF_ADDRESS', 'PROOF_OF_INCOME', 'BANK_STATEMENT'],
+      TIER_3: ['GOVERNMENT_ID', 'SELFIE', 'PROOF_OF_ADDRESS', 'TAX_ID'],
     };
     return tierRequirements[tier] || [];
   }
