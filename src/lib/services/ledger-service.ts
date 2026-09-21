@@ -208,7 +208,7 @@ export class LedgerService {
     const reference = data.reference || generateReference('JNL');
 
     // Verify all accounts exist
-    const accountIds = [...new Set(data.entries.map(e => e.accountId))];
+    const accountIds = Array.from(new Set(data.entries.map(e => e.accountId)));
     const accounts = await prisma.account.findMany({
       where: { id: { in: accountIds } },
     });
@@ -230,10 +230,11 @@ export class LedgerService {
     // Check for sufficient balance on debit accounts using Decimal comparison
     for (const entry of data.entries.filter(e => e.entryType === 'DEBIT')) {
       const account = accounts.find(a => a.id === entry.accountId);
-      if (account) {
-        const entryAmount = toDecimal(entry.amount);
-        const availableBalance = toDecimal(account.availableBalance);
-        if (availableBalance.lessThan(entryAmount)) {
+      if (account) {      const entryAmount = toDecimal(entry.amount);
+      const availableBalance = toDecimal(account.availableBalance);
+      const difference = entryAmount.minus(availableBalance);
+      const epsilon = new Decimal('0.01');
+      if (difference.abs().greaterThan(epsilon)) {
           if (!LEDGER_CONFIG.ALLOW_NEGATIVE_BALANCES) {
             throw new InsufficientBalanceError(
               account.id,
@@ -274,7 +275,7 @@ export class LedgerService {
         investmentTransaction: data.investmentTransactionId
           ? { connect: { id: data.investmentTransactionId } }
           : undefined,
-        metadata: data.metadata || null,
+
       },
       include: {
         entries: true,
@@ -299,6 +300,7 @@ export class LedgerService {
             accountId: entry.accountId,
             entryType: entry.entryType,
             amount: toDecimal(entry.amount),
+            balance: new Decimal(0),
             description: entry.description || '',
             transactionId: entry.transactionId || null,
           },
@@ -314,7 +316,7 @@ export class LedgerService {
       data: {
         actorId: actingUserId || 'SYSTEM',
         action: 'CREATE',
-        resourceType: 'JOURNAL',
+        resourceType: 'LOAN',
         resourceId: journal.id,
         newValues: {
           reference: journal.reference,
@@ -329,7 +331,7 @@ export class LedgerService {
             .reduce((sum, e) => sum.plus(toDecimal(e.amount)), new Decimal(0))
             .toNumber(),
         },
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         status: 'SUCCESS',
       },
     });
@@ -429,7 +431,7 @@ export class LedgerService {
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser) throw new NotFoundError('User', actingUserId);
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
 
     if (reference) where.reference = { contains: reference, mode: 'insensitive' };
     if (status) where.status = status;
@@ -553,7 +555,7 @@ export class LedgerService {
       data: {
         actorId: actingUserId,
         action: 'REVERSE',
-        resourceType: 'JOURNAL',
+        resourceType: 'LOAN',
         resourceId: journal.id,
         oldValues: { status: journal.status },
         newValues: { status: 'REVERSED' },
@@ -594,7 +596,7 @@ export class LedgerService {
       }
     }
 
-    const where: Record<string, unknown> = { accountId };
+    const where: any = { accountId };
 
     if (startDate || endDate) {
       where.createdAt = {};
@@ -773,7 +775,7 @@ export class LedgerService {
 
       // Use a small epsilon for comparison due to potential rounding
       const epsilon = new Decimal(0.01);
-      if (difference.abs().greaterThan(epsilon)) {
+      if (difference.abs().greaterThanOrEqualTo(epsilon)) {
         discrepancies.push({
           accountId: account.id,
           storedBalance: storedBalance.toNumber(),
@@ -797,7 +799,7 @@ export class LedgerService {
     await prisma.auditLog.create({
       data: {
         actorId: actingUserId,
-        action: 'RECALCULATE_BALANCES',
+        action: 'PROCESS',
         resourceType: 'ACCOUNT',
         resourceId: 'ALL',
         metadata: {
@@ -829,7 +831,7 @@ export class LedgerService {
       throw new ForbiddenError('Only authorized personnel can generate trial balance');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = startDate;
@@ -896,7 +898,7 @@ export class LedgerService {
       throw new ForbiddenError('Only authorized personnel can view ledger statistics');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = startDate;
@@ -1239,13 +1241,19 @@ export class LedgerService {
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser) throw new NotFoundError('User', actingUserId);
 
-    // Check if user has access to any related entity
-    const hasAccess = 
-      journal.transaction?.userId === actingUserId ||
-      journal.transfer?.fromUserId === actingUserId ||
-      journal.deposit?.userId === actingUserId ||
-      journal.withdrawal?.userId === actingUserId ||
-      ['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role);
+    // Admins/support can access all journals
+    if (['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role)) return;
+
+    // Check related entities for ownership
+    const full = await prisma.journal.findUnique({
+      where: { id: journal.id },
+      include: { transaction: true, transfer: true, deposit: true, withdrawal: true },
+    });
+    const hasAccess =
+      full?.transaction?.userId === actingUserId ||
+      full?.transfer?.fromUserId === actingUserId ||
+      full?.deposit?.userId === actingUserId ||
+      full?.withdrawal?.userId === actingUserId;
 
     if (!hasAccess) {
       throw new ForbiddenError('You do not have access to this journal');
