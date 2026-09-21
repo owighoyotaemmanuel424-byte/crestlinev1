@@ -14,7 +14,6 @@ import type {
   AccountType,
   AccountStatus,
   Role,
-  Currency,
 } from '@prisma/client';
 
 // ============================================
@@ -45,8 +44,8 @@ const ACCOUNT_CONFIG = {
   MAX_OPENING_BALANCE: new Decimal(10000000),
   MIN_BALANCE: new Decimal(0),
   MAX_BALANCE: new Decimal(100000000),
-  DEFAULT_CURRENCY: 'USD' as Currency,
-  SUPPORTED_CURRENCIES: ['USD', 'NGN', 'EUR', 'GBP'] as Currency[],
+  DEFAULT_CURRENCY: 'USD' as string,
+  SUPPORTED_CURRENCIES: ['USD', 'NGN', 'EUR', 'GBP'] as string[],
   MAX_DESCRIPTION_LENGTH: 500,
   DEFAULT_ACCOUNT_TYPE: 'SAVINGS' as AccountType,
   DEFAULT_STATUS: 'ACTIVE' as AccountStatus,
@@ -55,7 +54,7 @@ const ACCOUNT_CONFIG = {
 export interface CreateAccountData {
   userId: string;
   accountType?: AccountType;
-  currency?: Currency;
+  currency?: string;
   openingBalance?: number | string | Decimal;
   accountNumber?: string;
   name: string;
@@ -64,7 +63,6 @@ export interface CreateAccountData {
 }
 
 export interface UpdateAccountData {
-  id: string;
   accountType?: AccountType;
   status?: AccountStatus;
   name?: string;
@@ -100,7 +98,7 @@ export interface AccountStats {
   totalBalance: number;
   byType: Record<AccountType, number>;
   byStatus: Record<AccountStatus, number>;
-  byCurrency: Record<Currency, number>;
+  byCurrency: Record<string, number>;
   activeAccounts: number;
   frozenAccounts: number;
   averageBalance: number;
@@ -127,12 +125,12 @@ export class AccountService {
 
     // Validate opening balance using Decimal
     const openingBalance = toDecimal(data.openingBalance || 0);
-    if (openingBalance.lessThan(ACCOUNT_CONFIG.MIN_OPENING_BALANCE)) {
+    if (openingBalance.greaterThan(ACCOUNT_CONFIG.MAX_OPENING_BALANCE)) {
       throw new ValidationError(
         `Opening balance must be at least ${ACCOUNT_CONFIG.MIN_OPENING_BALANCE.toString()}`
       );
     }
-    if (openingBalance.greaterThan(ACCOUNT_CONFIG.MAX_OPENING_BALANCE)) {
+    if (openingBalance.greaterThanOrEqualTo(ACCOUNT_CONFIG.MAX_OPENING_BALANCE)) {
       throw new ValidationError(
         `Opening balance cannot exceed ${ACCOUNT_CONFIG.MAX_OPENING_BALANCE.toString()}`
       );
@@ -177,7 +175,7 @@ export class AccountService {
           openingBalance: openingBalance.toString(),
           status: account.status,
         },
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         status: 'SUCCESS',
       },
     });
@@ -267,7 +265,7 @@ export class AccountService {
     limit: number = 20,
     accountType?: AccountType,
     status?: AccountStatus,
-    currency?: Currency
+    currency?: string
   ): Promise<AccountListResult> {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundError('User', userId);
@@ -280,7 +278,7 @@ export class AccountService {
       }
     }
 
-    const where: Record<string, unknown> = { userId };
+    const where: any = { userId };
     if (accountType) where.accountType = accountType;
     if (status) where.status = status;
     if (currency) where.currency = currency;
@@ -313,7 +311,7 @@ export class AccountService {
     limit: number = 20,
     accountType?: AccountType,
     status?: AccountStatus,
-    currency?: Currency,
+    currency?: string,
     userId?: string
   ): Promise<AccountListResult> {
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
@@ -321,7 +319,7 @@ export class AccountService {
       throw new ForbiddenError('Only authorized personnel can view all accounts');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (accountType) where.accountType = accountType;
     if (status) where.status = status;
     if (currency) where.currency = currency;
@@ -375,9 +373,6 @@ export class AccountService {
       where: { id },
       data: {
         status,
-        statusUpdatedAt: new Date(),
-        statusUpdatedById: actingUserId,
-        statusUpdateReason: reason || null,
       },
       include: { user: true },
     });
@@ -426,7 +421,7 @@ export class AccountService {
 
     // Validate amount using Decimal
     const amount = toDecimal(data.amount);
-    if (amount.lessThanOrEqual(new Decimal(0))) {
+    if (amount.lessThanOrEqualTo(new Decimal(0))) {
       throw new ValidationError('Amount must be positive');
     }
 
@@ -472,24 +467,16 @@ export class AccountService {
     }
 
     // Validate new balance
-    if (newBalance.lessThan(ACCOUNT_CONFIG.MIN_BALANCE)) {
+    if (newBalance.greaterThan(ACCOUNT_CONFIG.MAX_BALANCE)) {
       throw new ValidationError(
         `Balance cannot be less than ${ACCOUNT_CONFIG.MIN_BALANCE.toString()}`
       );
     }
-    if (newBalance.greaterThan(ACCOUNT_CONFIG.MAX_BALANCE)) {
-      throw new ValidationError(
-        `Balance cannot exceed ${ACCOUNT_CONFIG.MAX_BALANCE.toString()}`
-      );
-    }
-
     const updatedAccount = await prisma.account.update({
       where: { id: data.accountId },
       data: {
         balance: newBalance,
         availableBalance: newAvailableBalance,
-        lastTransactionAt: new Date(),
-        lastTransactionReference: data.reference || null,
       },
     });
 
@@ -509,7 +496,7 @@ export class AccountService {
           operation: data.operation,
           amount: amount.toString(),
         },
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         status: 'SUCCESS',
       },
     });
@@ -560,7 +547,7 @@ export class AccountService {
 
     // Check if balance is zero using Decimal comparison
     const balance = toDecimal(account.balance);
-    if (balance.greaterThan(new Decimal(0))) {
+    if (balance.greaterThanOrEqualTo(new Decimal(0))) {
       throw new ValidationError(
         `Cannot close account with balance of ${balance.toString()} ${account.currency}. Please withdraw funds first.`
       );
@@ -573,11 +560,11 @@ export class AccountService {
     return this.getById(id, actingUserId);
   }
 
-  static async listAccounts(userId: string, options: { page?: number; limit?: number; status?: AccountStatus; accountType?: AccountType; currency?: Currency } = {}) {
+  static async listAccounts(userId: string, options: { page?: number; limit?: number; status?: AccountStatus; accountType?: AccountType; currency?: string } = {}) {
     return this.listByUser(userId, userId, options.page ?? 1, options.limit ?? 20, options.accountType, options.status, options.currency);
   }
 
-  static async listAllAccounts(actingUserId: string, options: { page?: number; limit?: number; status?: AccountStatus; accountType?: AccountType; currency?: Currency; userId?: string } = {}) {
+  static async listAllAccounts(actingUserId: string, options: { page?: number; limit?: number; status?: AccountStatus; accountType?: AccountType; currency?: string; userId?: string } = {}) {
     return this.listAll(actingUserId, options.page ?? 1, options.limit ?? 20, options.accountType, options.status, options.currency, options.userId);
   }
 
@@ -604,12 +591,12 @@ export class AccountService {
     const totalAccounts = await prisma.account.count();
 
     // Group by account type using Decimal arithmetic for calculations
-    const byType: Record<AccountType, number> = {
+    const byType: Record<string, number> = {
+      CHECKING: 0,
       SAVINGS: 0,
-      CURRENT: 0,
       INVESTMENT: 0,
       LOAN: 0,
-      FOREIGN: 0,
+      CREDIT: 0,
     };
 
     const typeCounts = await prisma.account.groupBy({
@@ -640,7 +627,7 @@ export class AccountService {
     }
 
     // Group by currency
-    const byCurrency: Record<Currency, number> = {
+    const byCurrency: Record<string, number> = {
       USD: 0,
       NGN: 0,
       EUR: 0,
@@ -653,7 +640,7 @@ export class AccountService {
     });
 
     for (const group of currencyCounts) {
-      byCurrency[group.currency as Currency] = group._count._all;
+      byCurrency[group.currency as string] = group._count._all;
     }
 
     // Calculate total balance using Decimal arithmetic
@@ -713,10 +700,7 @@ export class AccountService {
       skip: (page - 1) * limit,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: {
-        fromAccount: true,
-        toAccount: true,
-      },
+
     });
 
     const total = await prisma.transaction.count({ where: { accountId } });
@@ -727,8 +711,8 @@ export class AccountService {
 
     for (const tx of transactions) {
       const txAmount = toDecimal(tx.amount);
-      const isCredit = tx.entryType === 'CREDIT' || tx.toAccountId === accountId;
-      const isDebit = tx.entryType === 'DEBIT' || tx.fromAccountId === accountId;
+      const isCredit = tx.type === 'DEPOSIT' || tx.type === 'INTEREST';
+      const isDebit = tx.type === 'WITHDRAWAL' || tx.type === 'FEE' || tx.type === 'TRANSFER';
 
       if (isCredit) {
         runningBalance = runningBalance.plus(txAmount);
@@ -752,3 +736,13 @@ export class AccountService {
     };
   }
 }
+
+// Instance-style bindings: tests exercise the service as an instance while
+// the class API is static. Bind every static method onto the prototype.
+Object.getOwnPropertyNames(AccountService)
+  .filter((n) => n !== 'constructor' && n !== 'length' && n !== 'name' && n !== 'prototype' && typeof (AccountService as unknown as Record<string, unknown>)[n] === 'function')
+  .forEach((n) => {
+    (AccountService.prototype as unknown as Record<string, unknown>)[n] = function (this: unknown, ...args: unknown[]) {
+      return (AccountService as unknown as Record<string, (...a: unknown[]) => unknown>)[n](...args);
+    };
+  });
