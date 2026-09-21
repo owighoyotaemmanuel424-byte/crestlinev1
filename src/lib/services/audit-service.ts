@@ -120,9 +120,9 @@ export class AuditService {
         action: data.action,
         resourceType: data.resourceType,
         resourceId: data.resourceId,
-        oldValues: data.oldValues || null,
-        newValues: data.newValues || null,
-        metadata: data.metadata || null,
+        oldValues: data.oldValues as any,
+        newValues: data.newValues as any,
+        metadata: data.metadata as any,
         ipAddress: data.ipAddress || null,
         userAgent: data.userAgent || null,
         status: data.status || ('SUCCESS' as AuditStatus),
@@ -158,9 +158,9 @@ export class AuditService {
             action: data.action,
             resourceType: data.resourceType,
             resourceId: data.resourceId,
-            oldValues: data.oldValues || null,
-            newValues: data.newValues || null,
-            metadata: data.metadata || null,
+            oldValues: data.oldValues as any,
+            newValues: data.newValues as any,
+            metadata: data.metadata as any,
             ipAddress: data.ipAddress || null,
             userAgent: data.userAgent || null,
             status: data.status || ('SUCCESS' as AuditStatus),
@@ -179,7 +179,7 @@ export class AuditService {
           },
         })
       )
-    ).then(results => results.map(this.formatEvent));
+    ).then(results => results.map((e: any) => this.formatEvent(e)));
   }
 
   // ============================================
@@ -232,7 +232,7 @@ export class AuditService {
     if (!actingUser) throw new NotFoundError('User', actingUserId);
 
     // Build where clause
-    const where: Record<string, unknown> = {};
+    const where: any = {};
 
     // Date range filter
     if (query.startDate || query.endDate) {
@@ -311,7 +311,7 @@ export class AuditService {
     const total = await prisma.auditLog.count({ where });
 
     return {
-      events: events.map(this.formatEvent),
+      events: events.map((e: any) => this.formatEvent(e)),
       total,
       page,
       limit,
@@ -358,7 +358,7 @@ export class AuditService {
     const total = await prisma.auditLog.count({ where });
 
     return {
-      events: events.map(this.formatEvent),
+      events: events.map((e: any) => this.formatEvent(e)),
       total,
       page,
       limit,
@@ -406,7 +406,7 @@ export class AuditService {
     const total = await prisma.auditLog.count({ where });
 
     return {
-      events: events.map(this.formatEvent),
+      events: events.map((e: any) => this.formatEvent(e)),
       total,
       page,
       limit,
@@ -429,7 +429,7 @@ export class AuditService {
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser) throw new NotFoundError('User', actingUserId);
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = startDate;
@@ -453,7 +453,7 @@ export class AuditService {
       _count: { _all: true },
     });
 
-    const byAction: Record<AuditAction, number> = {
+    const byAction: Record<string, number> = {
       CREATE: 0,
       UPDATE: 0,
       DELETE: 0,
@@ -464,12 +464,11 @@ export class AuditService {
       RESET_PASSWORD_REQUEST: 0,
       FREEZE: 0,
       UNFREEZE: 0,
-      TRANSFER: 0,
-      DEPOSIT: 0,
-      WITHDRAWAL: 0,
-      SANCTIONS_SCREENING: 0,
-      TRANSACTION_MONITORING: 0,
-      AUTO_APPROVE: 0,
+      PROCESS: 0,
+      APPROVE: 0,
+      VERIFY: 0,
+      READ: 0,
+      REPORT: 0,
     };
 
     for (const action of actions) {
@@ -483,7 +482,7 @@ export class AuditService {
       _count: { _all: true },
     });
 
-    const byResourceType: Record<ResourceType, number> = {
+    const byResourceType: Record<string, number> = {
       USER: 0,
       ACCOUNT: 0,
       TRANSACTION: 0,
@@ -494,28 +493,17 @@ export class AuditService {
       BENEFICIARY: 0,
       KYC_PROFILE: 0,
       KYC_DOCUMENT: 0,
-      LOAN_APPLICATION: 0,
-      LOAN_DISBURSEMENT: 0,
-      LOAN_REPAYMENT: 0,
-      INVESTMENT_PORTFOLIO: 0,
+      LOAN: 0,
       INVESTMENT: 0,
-      INVESTMENT_TRANSACTION: 0,
       SAVINGS_GOAL: 0,
-      SAVINGS_CONTRIBUTION: 0,
-      SAVINGS_WITHDRAWAL: 0,
       SUPPORT_TICKET: 0,
       SUPPORT_MESSAGE: 0,
-      SUPPORT_ATTACHMENT: 0,
       NOTIFICATION: 0,
       SESSION: 0,
-      SECURITY_SETTINGS: 0,
       PROFILE: 0,
-      AML_CASE: 0,
+      AML_CHECK: 0,
       FRAUD_ALERT: 0,
       WEBHOOK_EVENT: 0,
-      JOURNAL: 0,
-      LEDGER_ENTRY: 0,
-      FEE: 0,
     };
 
     for (const rt of resourceTypes) {
@@ -529,10 +517,9 @@ export class AuditService {
       _count: { _all: true },
     });
 
-    const byStatus: Record<AuditStatus, number> = {
+    const byStatus: Record<string, number> = {
       SUCCESS: 0,
       FAILURE: 0,
-      PENDING: 0,
     };
 
     for (const status of statuses) {
@@ -579,7 +566,7 @@ export class AuditService {
       byResourceType,
       byStatus,
       byActor,
-      recentEvents: recentEvents.map(this.formatEvent),
+      recentEvents: recentEvents.map((e: any) => this.formatEvent(e)),
     };
   }
 
@@ -604,7 +591,7 @@ export class AuditService {
     }
 
     // Get all events matching the query
-    const where: Record<string, unknown> = {};
+    const where: any = {};
 
     if (query.startDate || query.endDate) {
       where.createdAt = {};
@@ -633,7 +620,7 @@ export class AuditService {
       },
     });
 
-    const formattedEvents = events.map(this.formatEvent);
+    const formattedEvents = events.map((e: any) => this.formatEvent(e));
 
     if (format === 'json') {
       const exportData: AuditExportData = {
@@ -729,7 +716,7 @@ export class AuditService {
       await this.createEvent({
         actorId: actingUserId,
         action: 'DELETE',
-        resourceType: 'AUDIT_LOG',
+        resourceType: 'USER',
         resourceId: 'BULK_CLEANUP',
         metadata: {
           count,
@@ -754,7 +741,7 @@ export class AuditService {
   /**
    * Format audit log to AuditEvent
    */
-  private static formatEvent(event: AuditLog & { actor: User | null }): AuditEvent {
+  private static formatEvent(event: AuditLog & { actor?: { id: string; email: string; firstName: string; lastName: string; role: Role } | null }): AuditEvent {
     return {
       id: event.id,
       actorId: event.actorId,

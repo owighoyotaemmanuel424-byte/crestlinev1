@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { success } from '@/lib/middleware/response';
+import { prisma } from '@/lib/prisma';
 
 // ============================================
 // GET /api/health
@@ -36,9 +36,13 @@ export async function GET() {
 // Helper functions
 async function checkDatabase(): Promise<boolean> {
   try {
-    // In a real implementation, this would ping the database
+    await prisma.$queryRaw`SELECT 1`;
     return true;
-  } catch {
+  } catch (error) {
+    console.error(
+      '[health] database check failed:',
+      error instanceof Error ? error.message : error
+    );
     return false;
   }
 }

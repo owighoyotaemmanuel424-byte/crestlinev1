@@ -64,12 +64,30 @@ export async function authMiddleware(request: NextRequest) {
 
 /**
  * Extract authenticated user from request
+ *
+ * Prefers the headers injected by the edge middleware. When middleware is not
+ * in the request chain (it is optional in some deployments), the bearer token
+ * sent by the API client is verified directly so routes still authenticate.
  */
 export function getAuthUser(request: Request) {
-  const userId = request.headers.get('x-user-id');
-  const role = request.headers.get('x-user-role');
-  const email = request.headers.get('x-user-email');
-  
+  let userId = request.headers.get('x-user-id');
+  let role = request.headers.get('x-user-role');
+  let email = request.headers.get('x-user-email');
+
+  if (!userId) {
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const payload = verifyToken(authHeader.substring(7));
+        userId = payload.sub;
+        role = payload.role;
+        email = payload.email ?? null;
+      } catch {
+        // Invalid or expired token: fall through to the unauthorized error.
+      }
+    }
+  }
+
   if (!userId) {
     throw new UnauthorizedError('Authentication required');
   }

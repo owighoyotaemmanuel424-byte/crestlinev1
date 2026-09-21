@@ -11,15 +11,18 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
-    const isRead = searchParams.get('isRead') === 'true';
+    const isReadParam = searchParams.get('isRead');
+    const isRead = isReadParam === null ? undefined : isReadParam === 'true';
     const category = searchParams.get('category');
     
-    const result = await NotificationService.listNotifications(user.id, {
+    const result = await NotificationService.getUserNotifications(
+      user.id,
       page,
       limit,
       isRead,
-      category: category as any,
-    });
+      undefined,
+      (category as any) || undefined
+    );
     
     return paginated(result.notifications, result.page, result.limit, result.total);
   });
@@ -29,7 +32,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   return handleRouteError(request, { params: {} }, async () => {
     const user = getAuthUser(request);
-    const result = await NotificationService.markAllAsRead(user.id);
+    const result = await NotificationService.markAllNotificationsAsRead(user.id);
     return success(result);
   });
 }

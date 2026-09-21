@@ -20,6 +20,16 @@ export function formatCurrency(amount: DecimalLike | number | string, currency: 
   }).format(num);
 }
 
+// Coerce API money values (Decimal, string or number) into a plain number
+export function toAmount(
+  value: DecimalLike | number | string | null | undefined
+): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === 'object' && 'toNumber' in value) return value.toNumber();
+  if (typeof value === 'string') return parseFloat(value) || 0;
+  return value;
+}
+
 // Format date
 export function formatDate(date: Date | string, options?: Intl.DateTimeFormatOptions): string {
   const d = typeof date === 'string' ? new Date(date) : date;

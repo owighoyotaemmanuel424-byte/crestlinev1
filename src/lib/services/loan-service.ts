@@ -5,7 +5,6 @@ import {
   NotFoundError,
   ValidationError,
   InsufficientBalanceError,
-  LoanError,
 } from '../utils/errors';
 import { AccountService } from './account-service';
 import { LedgerService } from './ledger-service';
@@ -14,11 +13,9 @@ import type {
   User,
   Account,
   Loan,
-  LoanStatus,
   LoanType,
   RepaymentFrequency,
   Role,
-  Currency,
   Journal,
 } from '@prisma/client';
 
@@ -50,17 +47,16 @@ const LOAN_CONFIG = {
   MAX_LOAN_AMOUNT: new Decimal(1000000),
   MIN_DURATION_DAYS: 30,
   MAX_DURATION_DAYS: 3650,
-  DEFAULT_CURRENCY: 'USD' as Currency,
-  SUPPORTED_TYPES: ['PERSONAL', 'BUSINESS', 'MORTGAGE', 'AUTO', 'EDUCATION', 'PAYDAY'] as LoanType[],
+  DEFAULT_CURRENCY: 'USD',
+  SUPPORTED_TYPES: ['PERSONAL', 'BUSINESS', 'MORTGAGE', 'AUTO', 'STUDENT'] as LoanType[],
   INTEREST_RATES: {
     PERSONAL: new Decimal(0.12), // 12%
     BUSINESS: new Decimal(0.10), // 10%
     MORTGAGE: new Decimal(0.08), // 8%
     AUTO: new Decimal(0.09), // 9%
-    EDUCATION: new Decimal(0.07), // 7%
-    PAYDAY: new Decimal(0.15), // 15%
+    STUDENT: new Decimal(0.07), // 7%
   },
-  REPAYMENT_FREQUENCIES: ['MONTHLY', 'BIWEEKLY', 'WEEKLY', 'QUARTERLY', 'ANNUALLY'] as RepaymentFrequency[],
+  REPAYMENT_FREQUENCIES: ['MONTHLY', 'BIWEEKLY', 'WEEKLY', 'QUARTERLY'] as RepaymentFrequency[],
   MAX_DESCRIPTION_LENGTH: 1000,
   PROCESSING_FEE_PERCENTAGE: new Decimal(0.01), // 1%
   PROCESSING_FEE_MINIMUM: new Decimal(10),
@@ -76,7 +72,7 @@ export interface CreateLoanData {
   amount: number | string | Decimal;
   durationDays: number;
   repaymentFrequency?: RepaymentFrequency;
-  currency?: Currency;
+  currency?: string;
   description?: string;
   reference?: string;
   metadata?: Record<string, unknown>;
@@ -112,7 +108,7 @@ export interface LoanStats {
   totalDisbursed: number;
   totalRepaid: number;
   totalOutstanding: number;
-  byStatus: Record<LoanStatus, number>;
+  byStatus: Record<string, number>;
   byType: Record<LoanType, number>;
   averageAmount: number;
   overdueLoans: number;
@@ -158,7 +154,7 @@ export class LoanService {
 
     // Validate amount using Decimal
     const amount = toDecimal(data.amount);
-    if (amount.lessThanOrEqual(new Decimal(0))) {
+    if (amount.lessThanOrEqualTo(new Decimal(0))) {
       throw new ValidationError('Amount must be positive');
     }
     if (amount.lessThan(LOAN_CONFIG.MIN_LOAN_AMOUNT)) {
@@ -242,9 +238,9 @@ export class LoanService {
           maturityDate,
           processingFee,
           netDisbursement,
-          status: 'APPROVED' as LoanStatus,
+          status: 'APPROVED' as string,
           description: data.description || null,
-          metadata: data.metadata || null,
+          metadata: data.metadata as any,
         },
         include: {
           user: {
@@ -263,7 +259,7 @@ export class LoanService {
               availableBalance: true,
             },
           },
-          journal: true,
+
         },
       });
 
@@ -280,9 +276,9 @@ export class LoanService {
             transactionId: loan.id,
           },
         ],
-        loanId: loan.id,
+
         metadata: {
-          loanId: loan.id,
+  
           accountId: data.accountId,
           processingFee: processingFee.toString(),
           currency,
@@ -312,9 +308,9 @@ export class LoanService {
             transactionId: loan.id,
           },
         ],
-        loanId: loan.id,
+
         metadata: {
-          loanId: loan.id,
+  
           accountId: data.accountId,
           netDisbursement: netDisbursement.toString(),
           currency,
@@ -353,7 +349,7 @@ export class LoanService {
             netDisbursement: netDisbursement.toString(),
             maturityDate: maturityDate.toISOString(),
           },
-          metadata: data.metadata,
+          metadata: data.metadata as any,
           status: 'SUCCESS',
         },
       });
@@ -403,7 +399,7 @@ export class LoanService {
 
     // Validate amount using Decimal
     const amount = toDecimal(data.amount);
-    if (amount.lessThanOrEqual(new Decimal(0))) {
+    if (amount.lessThanOrEqualTo(new Decimal(0))) {
       throw new ValidationError('Amount must be positive');
     }
 
@@ -436,9 +432,8 @@ export class LoanService {
           totalRepaid: {
             increment: amount,
           },
-          lastRepaymentAt: new Date(),
-          lastRepaymentAmount: amount,
-          status: remainingAmount.minus(amount).lessThanOrEqual(new Decimal(0)) ? 'COMPLETED' : 'ACTIVE' as LoanStatus,
+
+          status: remainingAmount.minus(amount).lessThanOrEqualTo(new Decimal(0)) ? 'COMPLETED' : 'ACTIVE' as string,
         },
         include: {
           user: {
@@ -457,7 +452,7 @@ export class LoanService {
               availableBalance: true,
             },
           },
-          journal: true,
+
         },
       });
 
@@ -474,7 +469,6 @@ export class LoanService {
             transactionId: updatedLoan.id,
           },
         ],
-        loanId: updatedLoan.id,
         metadata: {
           loanId: updatedLoan.id,
           accountId: loan.accountId,
@@ -497,7 +491,7 @@ export class LoanService {
       await tx.auditLog.create({
         data: {
           actorId: actingUserId,
-          action: 'REPAY',
+          action: 'PROCESS',
           resourceType: 'LOAN',
           resourceId: loan.id,
           oldValues: {
@@ -568,7 +562,6 @@ export class LoanService {
             availableBalance: true,
           },
         },
-        journal: true,
       },
     });
 
@@ -593,7 +586,7 @@ export class LoanService {
     actingUserId: string,
     page: number = 1,
     limit: number = 20,
-    status?: LoanStatus,
+    status?: string,
     loanType?: LoanType
   ): Promise<LoanListResult> {
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -607,7 +600,7 @@ export class LoanService {
       }
     }
 
-    const where: Record<string, unknown> = { userId };
+    const where: any = { userId };
     if (status) where.status = status;
     if (loanType) where.loanType = loanType;
 
@@ -640,7 +633,7 @@ export class LoanService {
     actingUserId: string,
     page: number = 1,
     limit: number = 20,
-    status?: LoanStatus,
+    status?: string,
     loanType?: LoanType,
     userId?: string
   ): Promise<LoanListResult> {
@@ -649,7 +642,7 @@ export class LoanService {
       throw new ForbiddenError('Only authorized personnel can view all loans');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (status) where.status = status;
     if (loanType) where.loanType = loanType;
     if (userId) where.userId = userId;
@@ -688,7 +681,7 @@ export class LoanService {
     const totalLoans = await prisma.loan.count();
 
     // Group by status
-    const byStatus: Record<LoanStatus, number> = {
+    const byStatus: Record<string, number> = {
       PENDING: 0,
       APPROVED: 0,
       ACTIVE: 0,
@@ -703,7 +696,7 @@ export class LoanService {
     });
 
     for (const group of statusCounts) {
-      byStatus[group.status as LoanStatus] = group._count._all;
+      byStatus[group.status as string] = group._count._all;
     }
 
     // Group by type
@@ -712,8 +705,7 @@ export class LoanService {
       BUSINESS: 0,
       MORTGAGE: 0,
       AUTO: 0,
-      EDUCATION: 0,
-      PAYDAY: 0,
+      STUDENT: 0,
     };
 
     const typeCounts = await prisma.loan.groupBy({
@@ -727,8 +719,8 @@ export class LoanService {
 
     // Calculate total amount using Decimal arithmetic
     const allLoans = await prisma.loan.findMany({
-      where: { status: { in: ['APPROVED', 'ACTIVE', 'OVERDUE'] as LoanStatus[] } },
-      select: { amount: true, totalRepayment: true, totalRepaid: true, currency: true },
+      where: { status: { in: ['APPROVED', 'ACTIVE', 'OVERDUE'] as string[] } },
+      select: { amount: true, totalRepayment: true, totalRepaid: true, currency: true, processingFee: true },
     });
 
     const totalAmount = allLoans
@@ -756,7 +748,7 @@ export class LoanService {
     const today = new Date();
     const overdueLoans = await prisma.loan.count({
       where: {
-        status: { in: ['ACTIVE', 'APPROVED'] as LoanStatus[] },
+        status: { in: ['ACTIVE', 'APPROVED'] as string[] },
         maturityDate: { lt: today },
       },
     });
@@ -830,7 +822,7 @@ export class LoanService {
       dueDate.setMonth(dueDate.getMonth() + i + 1);
 
       const paymentAmount = i === months - 1 ? remaining : monthlyPayment;
-      const isPaid = repaid.greaterThanOrEqual(new Decimal(i * monthlyPayment.toNumber()));
+      const isPaid = repaid.greaterThanOrEqualTo(new Decimal(i * monthlyPayment.toNumber()));
 
       schedule.push({
         paymentNumber,

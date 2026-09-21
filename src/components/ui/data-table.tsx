@@ -1,87 +1,274 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
+import {
+  ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Search,
+} from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export interface Column<T> {
   key?: string;
   accessor?: string;
   header: string;
   sortable?: boolean;
-  render?: (item: T, index: number) => React.ReactNode;
-  cell?: (item: T, index: number) => React.ReactNode;
+  className?: string;
   width?: string;
+  render?: (item: T, index: number) => ReactNode;
+  cell?: (item: T, index: number) => ReactNode;
+}
+
+export interface DataTablePagination {
+  currentPage: number;
+  totalPages: number;
+  totalItems?: number;
+  onPageChange: (page: number) => void;
 }
 
 export interface DataTableProps<T> {
   data: T[];
   columns: Column<T>[];
-  keyExtractor: (item: T) => string;
+  keyExtractor?: (item: T) => string;
   title?: string;
+  description?: string;
   searchKey?: string;
-  actions?: (item: T) => React.ReactNode;
+  searchPlaceholder?: string;
+  actions?: (item: T) => ReactNode;
   onRefresh?: () => void;
   isLoading?: boolean;
   emptyMessage?: string;
+  emptyAction?: ReactNode;
+  pagination?: DataTablePagination;
+  itemsPerPage?: number;
+  className?: string;
 }
 
-export function DataTable<T>(props: DataTableProps<T>) {
-  const { data, columns, keyExtractor, title, searchKey, actions, onRefresh, isLoading = false, emptyMessage = 'No data available' } = props;
+function cellValue<T>(item: T, column: Column<T>) {
+  return (item as Record<string, unknown>)[
+    column.key || column.accessor || column.header
+  ];
+}
+
+export function DataTable<T>({
+  data,
+  columns,
+  keyExtractor,
+  title,
+  description,
+  searchKey,
+  searchPlaceholder = 'Search…',
+  actions,
+  onRefresh,
+  isLoading = false,
+  emptyMessage = 'No records to display yet.',
+  emptyAction,
+  pagination,
+  itemsPerPage = 10,
+  className,
+}: DataTableProps<T>) {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage] = useState(10);
-  const [sortConfig, setSortConfig] = useState<any>(null);
+  const [sort, setSort] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
-  const filteredData = searchKey
-    ? data.filter((item: any) => String(item[searchKey]).toLowerCase().includes(searchQuery.toLowerCase()))
-    : data;
+  const hasToolbar = Boolean(title || searchKey || onRefresh);
 
-  const sortedData = [...filteredData];
-  if (sortConfig) {
-    sortedData.sort((a: any, b: any) => {
-      const aVal = a[sortConfig.key];
-      const bVal = b[sortConfig.key];
-      if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
+  const filtered = useMemo(() => {
+    if (!searchKey || !searchQuery) return data;
+    const needle = searchQuery.toLowerCase();
+    return data.filter((item) =>
+      String((item as Record<string, unknown>)[searchKey] ?? '')
+        .toLowerCase()
+        .includes(needle)
+    );
+  }, [data, searchKey, searchQuery]);
+
+  const sorted = useMemo(() => {
+    if (!sort) return filtered;
+    return [...filtered].sort((a, b) => {
+      const left = (a as Record<string, unknown>)[sort.key];
+      const right = (b as Record<string, unknown>)[sort.key];
+      if (left === right) return 0;
+      const result = (left as never) > (right as never) ? 1 : -1;
+      return sort.direction === 'asc' ? result : -result;
     });
-  }
+  }, [filtered, sort]);
 
-  const totalPages = Math.ceil(sortedData.length / itemsPerPage);
-  const paginatedData = sortedData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const paged = pagination
+    ? sorted
+    : sorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const handleSort = (key: string) => {
-    if (sortConfig?.key === key) {
-      setSortConfig({ key, direction: sortConfig.direction === 'asc' ? 'desc' : 'asc' });
+  const derivedTotalPages = pagination
+    ? pagination.totalPages
+    : Math.max(1, Math.ceil(sorted.length / itemsPerPage));
+
+  const activePage = pagination ? pagination.currentPage : currentPage;
+
+  const goToPage = (page: number) => {
+    if (pagination) {
+      pagination.onPageChange(page);
     } else {
-      setSortConfig({ key, direction: 'asc' });
+      setCurrentPage(page);
     }
   };
 
-  const getSortIcon = (key: string) => {
-    if (sortConfig?.key !== key) return null;
-    return sortConfig.direction === 'asc' ? 'Up' : 'Down';
+  const toggleSort = (column: Column<T>) => {
+    const key = column.key || column.accessor || column.header;
+    setSort((previous) =>
+      previous?.key === key
+        ? { key, direction: previous.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' }
+    );
   };
 
   return (
-    <Card>
-      <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <CardTitle>{title || 'Data Table'}</CardTitle>
-        <div className="flex items-center space-x-2 mt-4 sm:mt-0">
-          {searchKey && (
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input type="search" placeholder="Search..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} className="pl-8 w-64" />
-            </div>
-          )}
-          {onRefresh && <Button variant="outline" size="sm" onClick={onRefresh}>Refresh</Button>}
+    <div className={cn('w-full', className)}>
+      {hasToolbar && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            {title && (
+              <h3 className="text-base font-semibold tracking-tight">{title}</h3>
+            )}
+            {description && (
+              <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {searchKey && (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value);
+                    setCurrentPage(1);
+                  }}
+                  placeholder={searchPlaceholder}
+                  className="h-10 w-full pl-9 sm:w-64"
+                />
+              </div>
+            )}
+            {onRefresh && (
+              <Button variant="outline" size="sm" onClick={onRefresh}>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Refresh
+              </Button>
+            )}
+          </div>
         </div>
-      </CardHeader>
-      <CardContent>
-        {isLoading ? <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500" /></div> : paginatedData.length === 0 ? <div className="text-center py-12 text-muted-foreground">{emptyMessage}</div> : <><div className="overflow-x-auto"><table className="w-full"><thead><tr className="border-b">{columns.map((column) => <th key={column.key || column.accessor || column.header} className="px-4 py-3 text-left text-sm font-medium text-muted-foreground" style={{ width: column.width || 'auto' }}><div className="flex items-center">{column.header}{column.sortable && <button className="ml-1 text-xs" onClick={() => handleSort(column.key || column.accessor || column.header)}>{getSortIcon((column.key || column.accessor || column.header))}</button>}</div></th>)}{actions && <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>}</tr></thead><tbody>{paginatedData.map((item, index) => <tr key={keyExtractor(item)} className="border-b hover:bg-muted/50">{columns.map((column) => <td key={column.key} className="px-4 py-3 text-sm">{column.render ? column.render(item, index) : column.cell ? column.cell(item, index) : (item as any)[column.key || column.accessor || column.header]}</td>)}{actions && <td className="px-4 py-3 text-right">{actions(item)}</td>}</tr>)}</tbody></table></div>{totalPages > 1 && <div className="flex items-center justify-between mt-6"><div className="text-sm text-muted-foreground">Showing {paginatedData.length} of {filteredData.length} items</div><div className="flex items-center space-x-2"><Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage(currentPage - 1)}><ChevronLeft className="h-4 w-4" /></Button><span className="text-sm">Page {currentPage} of {totalPages}</span><Button variant="outline" size="sm" disabled={currentPage === totalPages} onClick={() => setCurrentPage(currentPage + 1)}><ChevronRight className="h-4 w-4" /></Button></div></div>}</>}</CardContent>
-    </Card>
+      )}
+
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <table className="chase-table">
+          <thead>
+            <tr>
+              {columns.map((column, index) => (
+                <th key={column.key || column.accessor || column.header + index}>
+                  {column.sortable ? (
+                    <button
+                      type="button"
+                      onClick={() => toggleSort(column)}
+                      className="inline-flex items-center gap-1.5 hover:text-foreground"
+                    >
+                      {column.header}
+                      <ArrowUpDown className="h-3.5 w-3.5" />
+                    </button>
+                  ) : (
+                    column.header
+                  )}
+                </th>
+              ))}
+              {actions && <th className="text-right">Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
+              Array.from({ length: 4 }).map((_, rowIndex) => (
+                <tr key={rowIndex}>
+                  {columns.map((column, cellIndex) => (
+                    <td key={cellIndex}>
+                      <div className="skeleton h-4 w-full max-w-[9rem]" />
+                    </td>
+                  ))}
+                  {actions && (
+                    <td>
+                      <div className="skeleton ml-auto h-4 w-12" />
+                    </td>
+                  )}
+                </tr>
+              ))
+            ) : paged.length === 0 ? (
+              <tr>
+                <td colSpan={columns.length + (actions ? 1 : 0)}>
+                  <div className="flex flex-col items-center gap-3 px-4 py-14 text-center">
+                    <p className="text-sm text-muted-foreground">{emptyMessage}</p>
+                    {emptyAction}
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              paged.map((item, index) => (
+                <tr key={keyExtractor ? keyExtractor(item) : index}>
+                  {columns.map((column, cellIndex) => (
+                    <td
+                      key={cellIndex}
+                      className={cn('text-foreground', column.className)}
+                      style={column.width ? { width: column.width } : undefined}
+                    >
+                      {column.render
+                        ? column.render(item, index)
+                        : column.cell
+                          ? column.cell(item, index)
+                          : (cellValue(item, column) as ReactNode)}
+                    </td>
+                  ))}
+                  {actions && (
+                    <td className="text-right">{actions(item)}</td>
+                  )}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {derivedTotalPages > 1 && (
+        <div className="mt-4 flex flex-col-reverse items-center justify-between gap-3 sm:flex-row">
+          <p className="text-xs text-muted-foreground">
+            {(pagination?.totalItems ?? sorted.length) > 0
+              ? `Showing page ${activePage} of ${derivedTotalPages} · ${
+                  pagination?.totalItems ?? sorted.length
+                } records`
+              : 'No records'}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={activePage <= 1}
+              onClick={() => goToPage(activePage - 1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={activePage >= derivedTotalPages}
+              onClick={() => goToPage(activePage + 1)}
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

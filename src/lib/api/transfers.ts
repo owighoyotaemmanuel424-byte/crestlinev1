@@ -29,6 +29,18 @@ export interface Transfer {
   journal?: any;
 }
 
+export interface CreateTransferData {
+  senderAccountId: string;
+  recipientName: string;
+  recipientBank?: string;
+  recipientAccountNumber: string;
+  amount: number | string | Decimal;
+  currency?: string;
+  description?: string;
+  idempotencyKey?: string;
+  [key: string]: unknown;
+}
+
 export interface TransferListParams {
   page?: number;
   limit?: number;

@@ -16,7 +16,6 @@ import type {
   Account,
   Transfer,
   TransferStatus,
-  TransferType,
   Role,
   Journal,
 } from '@prisma/client';
@@ -85,7 +84,7 @@ export interface TransferStats {
   totalTransfers: number;
   totalAmount: number;
   byStatus: Record<TransferStatus, number>;
-  byType: Record<TransferType, number>;
+  byRiskStatus: Record<string, number>;
   averageAmount: number;
   pendingApproval: number;
 }
@@ -111,7 +110,7 @@ export class TransferService {
     if (fromAccount.status !== 'ACTIVE') throw new ValidationError(`From account is ${fromAccount.status.toLowerCase()}`);
     if (toAccount.status !== 'ACTIVE') throw new ValidationError(`To account is ${toAccount.status.toLowerCase()}`);
     const amount = toDecimal(data.amount);
-    if (amount.lessThanOrEqual(new Decimal(0))) throw new ValidationError('Amount must be positive');
+    if (amount.lessThanOrEqualTo(new Decimal(0))) throw new ValidationError('Amount must be positive');
     if (amount.greaterThan(TRANSFER_CONFIG.MAX_TRANSFER_AMOUNT)) throw new ValidationError(`Amount exceeds maximum transfer limit of ${TRANSFER_CONFIG.MAX_TRANSFER_AMOUNT.toString()}`);
     if (data.idempotencyKey) {
       const existingTransfer = await prisma.transfer.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
@@ -136,7 +135,7 @@ export class TransferService {
     if (newMonthlyTotal.greaterThan(TRANSFER_CONFIG.MONTHLY_LIMIT)) {
       throw new MonthlyLimitExceededError(data.fromUserId, TRANSFER_CONFIG.MONTHLY_LIMIT.toNumber(), newMonthlyTotal.toNumber());
     }
-    const requiresApproval = amount.greaterThanOrEqual(TRANSFER_CONFIG.REQUIRE_APPROVAL_AMOUNT);
+    const requiresApproval = amount.greaterThanOrEqualTo(TRANSFER_CONFIG.REQUIRE_APPROVAL_AMOUNT);
     const reference = data.reference || generateReference('TRF');
     const idempotencyKey = data.idempotencyKey || generateIdempotencyKey();
     const feeAmount = amount.times(TRANSFER_CONFIG.FEE_PERCENTAGE);
@@ -154,14 +153,11 @@ export class TransferService {
           fromAccountId: data.fromAccountId,
           toAccountId: data.toAccountId,
           amount: amount,
-          fee: fee,
-          totalAmount: totalDeduction,
           currency: data.currency || TRANSFER_CONFIG.DEFAULT_CURRENCY,
           description: data.description || null,
           status: requiresApproval ? 'PENDING' : 'COMPLETED' as TransferStatus,
-          type: data.fromUserId === data.toUserId ? 'INTERNAL' : 'EXTERNAL' as TransferType,
           idempotencyKey,
-          metadata: data.metadata || null,
+          metadata: data.metadata as any,
         },
         include: {
           fromUser: { select: { id: true, email: true, firstName: true, lastName: true } },
@@ -192,7 +188,7 @@ export class TransferService {
           resourceType: 'TRANSFER',
           resourceId: transfer.id,
           newValues: { reference, fromUserId: data.fromUserId, toUserId: data.toUserId, amount: amount.toString(), fee: fee.toString(), totalAmount: totalDeduction.toString(), status: transfer.status, requiresApproval },
-          metadata: data.metadata,
+          metadata: data.metadata as any,
           status: 'SUCCESS',
         },
       });
@@ -269,7 +265,7 @@ export class TransferService {
     }
     return { transfer };
   }
-  static async listByUser(userId: string, actingUserId: string, page: number = 1, limit: number = 20, type?: TransferType, status?: TransferStatus, startDate?: Date, endDate?: Date): Promise<TransferListResult> {
+  static async listByUser(userId: string, actingUserId: string, page: number = 1, limit: number = 20, status?: TransferStatus, startDate?: Date, endDate?: Date): Promise<TransferListResult> {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundError('User', userId);
     if (actingUserId !== userId) {
@@ -278,8 +274,7 @@ export class TransferService {
         throw new ForbiddenError('You do not have access to these transfers');
       }
     }
-    const where: Record<string, unknown> = { OR: [{ fromUserId: userId }, { toUserId: userId }] };
-    if (type) where.type = type;
+    const where: any = { OR: [{ fromUserId: userId }, { toUserId: userId }] };
     if (status) where.status = status;
     if (startDate || endDate) {
       where.createdAt = {};
@@ -290,13 +285,12 @@ export class TransferService {
     const total = await prisma.transfer.count({ where });
     return { transfers, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
-  static async listAll(actingUserId: string, page: number = 1, limit: number = 20, type?: TransferType, status?: TransferStatus, startDate?: Date, endDate?: Date, userId?: string): Promise<TransferListResult> {
+  static async listAll(actingUserId: string, page: number = 1, limit: number = 20, status?: TransferStatus, startDate?: Date, endDate?: Date, userId?: string): Promise<TransferListResult> {
     const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
     if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role)) {
       throw new ForbiddenError('Only authorized personnel can view all transfers');
     }
-    const where: Record<string, unknown> = {};
-    if (type) where.type = type;
+    const where: any = {};
     if (status) where.status = status;
     if (userId) where.OR = [{ fromUserId: userId }, { toUserId: userId }];
     if (startDate || endDate) {
@@ -316,13 +310,13 @@ export class TransferService {
     if (transfer.status !== 'PENDING') throw new ValidationError('Only pending transfers can be approved');
     if (transfer.fromAccount.status !== 'ACTIVE') throw new ValidationError('From account is no longer active');
     if (transfer.toAccount.status !== 'ACTIVE') throw new ValidationError('To account is no longer active');
-    const totalAmount = toDecimal(transfer.totalAmount);
+    const totalAmount = toDecimal(transfer.amount);
     const availableBalance = toDecimal(transfer.fromAccount.availableBalance);
     if (availableBalance.lessThan(totalAmount)) throw new InsufficientBalanceError(transfer.fromAccount.id, totalAmount.toNumber(), availableBalance.toNumber());
     return await prisma.$transaction(async (tx) => {
       const approvedTransfer = await tx.transfer.update({
         where: { id },
-        data: { status: 'APPROVED' as TransferStatus, approvedById: actingUserId, approvedAt: new Date(), approvalNotes: notes || null },
+        data: { status: 'COMPLETED' as TransferStatus, metadata: { approvedById: actingUserId, approvedAt: new Date().toISOString(), approvalNotes: notes } as any },
         include: { fromUser: { select: { id: true, email: true, firstName: true, lastName: true } }, toUser: { select: { id: true, email: true, firstName: true, lastName: true } }, fromAccount: { select: { id: true, accountNumber: true, balance: true, availableBalance: true } }, toAccount: { select: { id: true, accountNumber: true, balance: true, availableBalance: true } }, journal: true },
       });
       await tx.account.update({ where: { id: transfer.fromAccountId }, data: { balance: { decrement: totalAmount }, availableBalance: { decrement: totalAmount } } });
@@ -341,7 +335,7 @@ export class TransferService {
     if (transfer.status !== 'PENDING') throw new ValidationError('Only pending transfers can be rejected');
     const rejectedTransfer = await prisma.transfer.update({
       where: { id },
-      data: { status: 'REJECTED' as TransferStatus, rejectedById: actingUserId, rejectedAt: new Date(), rejectionReason: reason },
+      data: { status: 'CANCELLED' as TransferStatus, metadata: { rejectedById: actingUserId, rejectedAt: new Date().toISOString(), rejectionReason: reason } as any },
       include: { fromUser: { select: { id: true, email: true, firstName: true, lastName: true } }, toUser: { select: { id: true, email: true, firstName: true, lastName: true } }, fromAccount: { select: { id: true, accountNumber: true, balance: true, availableBalance: true } }, toAccount: { select: { id: true, accountNumber: true, balance: true, availableBalance: true } }, journal: true },
     });
     await prisma.auditLog.create({ data: { actorId: actingUserId, action: 'REJECT', resourceType: 'TRANSFER', resourceId: transfer.id, oldValues: { status: transfer.status }, newValues: { status: 'REJECTED', reason }, status: 'SUCCESS' } });
@@ -354,16 +348,16 @@ export class TransferService {
       throw new ForbiddenError('Only authorized personnel can view transfer statistics');
     }
     const totalTransfers = await prisma.transfer.count();
-    const byStatus: Record<TransferStatus, number> = { PENDING: 0, COMPLETED: 0, APPROVED: 0, REJECTED: 0, FAILED: 0 };
+    const byStatus: Record<string, number> = { PENDING: 0, PROCESSING: 0, COMPLETED: 0, FAILED: 0, REVERSED: 0, CANCELLED: 0, HOLD: 0 };
     const statusCounts = await prisma.transfer.groupBy({ by: ['status'], _count: { _all: true } });
     for (const group of statusCounts) byStatus[group.status as TransferStatus] = group._count._all;
-    const byType: Record<TransferType, number> = { INTERNAL: 0, EXTERNAL: 0 };
-    const typeCounts = await prisma.transfer.groupBy({ by: ['type'], _count: { _all: true } });
-    for (const group of typeCounts) byType[group.type as TransferType] = group._count._all;
-    const allTransfers = await prisma.transfer.findMany({ where: { status: { in: ['COMPLETED', 'APPROVED'] as TransferStatus[] } }, select: { amount: true } });
+    const byRiskStatus: Record<string, number> = { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0 };
+    const riskCounts = await prisma.transfer.groupBy({ by: ['riskStatus'], _count: { _all: true } });
+    for (const group of riskCounts) { if (group.riskStatus) byRiskStatus[group.riskStatus] = group._count?._all ?? 0; }
+    const allTransfers = await prisma.transfer.findMany({ where: { status: { in: ['COMPLETED'] as TransferStatus[] } }, select: { amount: true } });
     const totalAmount = allTransfers.reduce((sum, t) => sum.plus(toDecimal(t.amount)), new Decimal(0)).toNumber();
     const averageAmount = allTransfers.length > 0 ? allTransfers.reduce((sum, t) => sum.plus(toDecimal(t.amount)), new Decimal(0)).div(allTransfers.length).toNumber() : 0;
     const pendingApproval = await prisma.transfer.count({ where: { status: 'PENDING' } });
-    return { totalTransfers, totalAmount, byStatus, byType, averageAmount, pendingApproval };
+    return { totalTransfers, totalAmount, byStatus, byRiskStatus, averageAmount, pendingApproval };
   }
 }

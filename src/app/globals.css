@@ -2,150 +2,165 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-  --background-rgb: 11, 15, 25;
-  --background-rgb-secondary: 18, 24, 40;
-  --background-rgb-tertiary: 26, 33, 54;
-  --primary-rgb: 56, 189, 248;
-  --primary-rgb-dark: 23, 146, 255;
-  --success-rgb: 34, 197, 94;
-  --warning-rgb: 251, 146, 60;
-  --error-rgb: 239, 68, 68;
-  --info-rgb: 59, 130, 246;
+/*
+ * Crestline Capital design system
+ * Chase-inspired: deep navy chrome, signature blue actions, clean white surfaces.
+ */
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 214 33% 16%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 214 33% 16%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 214 33% 16%;
+
+    --primary: 206 84% 43%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 214 30% 96%;
+    --secondary-foreground: 214 33% 22%;
+
+    --muted: 214 30% 96%;
+    --muted-foreground: 216 15% 45%;
+
+    --accent: 206 66% 95%;
+    --accent-foreground: 212 100% 22%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 160 82% 26%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 32 88% 38%;
+    --warning-foreground: 0 0% 100%;
+
+    --surface: 214 33% 97%;
+
+    --border: 216 20% 90%;
+    --input: 215 20% 86%;
+    --ring: 206 84% 43%;
+
+    --navy: 212 100% 18%;
+    --navy-foreground: 0 0% 100%;
+
+    --radius: 0.625rem;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  ::selection {
+    background-color: hsl(var(--accent));
+    color: hsl(var(--accent-foreground));
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--surface));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(216 16% 82%);
+    border: 2px solid hsl(var(--surface));
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(216 14% 70%);
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
-}
+@layer components {
+  /* White content card used across the banking workspace */
+  .chase-card {
+    @apply rounded-xl border border-border bg-card shadow-card;
+  }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+  .chase-card-hover {
+    @apply transition-shadow duration-200 hover:shadow-elevated;
+  }
 
-::-webkit-scrollbar-track {
-  background: rgb(var(--background-rgb-secondary));
-}
+  /* Small uppercase label above section headings */
+  .eyebrow {
+    @apply text-xs font-bold uppercase tracking-[0.14em] text-primary;
+  }
 
-::-webkit-scrollbar-thumb {
-  background: rgb(var(--background-rgb-tertiary));
-  border-radius: 4px;
-}
+  .chase-label {
+    @apply mb-1.5 block text-sm font-semibold text-foreground;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--primary-rgb));
-}
+  .chase-input {
+    @apply flex h-11 w-full rounded-md border border-input bg-background px-3.5 py-2 text-[0.95rem] text-foreground shadow-sm transition-colors placeholder:text-muted-foreground/70 focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 disabled:cursor-not-allowed disabled:bg-muted disabled:opacity-70;
+  }
 
-/* Focus styles for accessibility */
-:focus-visible {
-  outline: 2px solid rgb(var(--primary-rgb));
-  outline-offset: 2px;
-}
+  .chase-link {
+    @apply font-semibold text-primary underline-offset-4 hover:text-primary-700 hover:underline;
+  }
 
-.crestline-gradient {
-  background: linear-gradient(135deg, rgb(var(--primary-rgb)) 0%, rgb(var(--primary-rgb-dark)) 100%);
-}
+  /* Deep navy marketing hero / app chrome */
+  .chase-navy {
+    background-image: linear-gradient(160deg, #002b5c 0%, #062036 58%, #001e42 100%);
+  }
 
-.crestline-card {
-  background: rgb(var(--background-rgb-secondary));
-  border: 1px solid rgba(56, 189, 248, 0.1);
-  border-radius: 0.5rem;
-  padding: 1.5rem;
-  transition: all 0.2s ease;
-}
+  .chase-blue-band {
+    background-image: linear-gradient(135deg, #117aca 0%, #0f66a8 55%, #0d5286 100%);
+  }
 
-.crestline-card:hover {
-  border-color: rgba(56, 189, 248, 0.3);
-  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.1), 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-}
+  .chase-grid-lines {
+    background-image:
+      linear-gradient(to right, rgb(255 255 255 / 0.06) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(255 255 255 / 0.06) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
 
-.crestline-btn {
-  background: rgb(var(--primary-rgb));
-  color: white;
-  border: none;
-  border-radius: 0.375rem;
-  padding: 0.625rem 1.25rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
+  .chase-table {
+    @apply w-full border-collapse text-sm;
+  }
 
-.crestline-btn:hover {
-  background: rgb(var(--primary-rgb-dark));
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
-}
+  .chase-table thead th {
+    @apply border-b border-border bg-muted/60 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground;
+  }
 
-.crestline-input {
-  background: rgb(var(--background-rgb-secondary));
-  border: 1px solid rgba(56, 189, 248, 0.2);
-  border-radius: 0.375rem;
-  padding: 0.75rem 1rem;
-  color: rgb(var(--foreground-rgb));
-  width: 100%;
-  transition: all 0.2s ease;
-}
+  .chase-table tbody td {
+    @apply border-b border-border/70 px-4 py-4 align-middle;
+  }
 
-.crestline-input:focus {
-  outline: none;
-  border-color: rgb(var(--primary-rgb));
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
-}
+  .chase-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
 
-.crestline-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
+  .chase-table tbody tr {
+    @apply transition-colors hover:bg-accent/40;
+  }
 
-.crestline-badge-success {
-  background: rgba(34, 197, 94, 0.2);
-  color: rgb(var(--success-rgb));
-}
-
-.crestline-badge-warning {
-  background: rgba(251, 146, 60, 0.2);
-  color: rgb(var(--warning-rgb));
-}
-
-.crestline-badge-error {
-  background: rgba(239, 68, 68, 0.2);
-  color: rgb(var(--error-rgb));
-}
-
-.crestline-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.crestline-table th,
-.crestline-table td {
-  padding: 1rem;
-  text-align: left;
-  border-bottom: 1px solid rgba(56, 189, 248, 0.1);
-}
-
-.crestline-table th {
-  background: rgb(var(--background-rgb-tertiary));
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.crestline-table tr:hover {
-  background: rgba(56, 189, 248, 0.05);
-}
-
-@media (max-width: 768px) {
-  .crestline-table-responsive {
-    display: block;
-    overflow-x: auto;
+  .skeleton {
+    @apply animate-pulse rounded-md bg-muted;
   }
 }

@@ -353,6 +353,16 @@ async function main() {
       balance: 50000.00,
       availableBalance: 50000.00,
     },
+    {
+      userId: admin.id,
+      accountNumber: 'CL-SYS-000001',
+      accountType: AccountType.CHECKING,
+      name: 'System Clearing',
+      currency: 'USD',
+      status: AccountStatus.ACTIVE,
+      balance: 0.00,
+      availableBalance: 0.00,
+    },
   ];
 
   const createdAccounts = await Promise.all(
@@ -459,6 +469,8 @@ async function main() {
 
   const johnChecking = createdAccounts.find(a => a.accountNumber === 'CL-001-000001')!;
   const janeChecking = createdAccounts.find(a => a.accountNumber === 'CL-002-000001')!;
+  // Counter-account used for the double-entry side of customer deposits.
+  const systemLiabilities = createdAccounts.find(a => a.accountNumber === 'CL-SYS-000001')!;
 
   const cards = [
     {
@@ -556,7 +568,7 @@ async function main() {
       },
       {
         journalId: journal1.id,
-        accountId: 'SYSTEM_LIABILITIES',
+        accountId: systemLiabilities.id,
         entryType: 'DEBIT',
         amount: 5000.00,
         balance: -5000.00,
@@ -602,7 +614,7 @@ async function main() {
       },
       {
         journalId: journal2.id,
-        accountId: 'SYSTEM_LIABILITIES',
+        accountId: systemLiabilities.id,
         entryType: 'DEBIT',
         amount: 8000.00,
         balance: -8000.00,

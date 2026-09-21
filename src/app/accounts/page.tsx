@@ -3,239 +3,292 @@
 
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { useAccounts } from '@/hooks';
-import { formatCurrency } from '@/lib/utils';
-import { DataTable } from '@/components/ui/data-table';
+import { useState } from 'react';
+import { Download, Landmark, Search, Send } from 'lucide-react';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { useToast } from '@/components/ui/toast';
+import { DataTable, type Column } from '@/components/ui/data-table';
+import { EmptyState, ErrorState, LoadingRows } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { PageHeader } from '@/components/ui/page-header';
+import { Select } from '@/components/ui/select';
+import { StatCard } from '@/components/ui/stat-card';
+import { useAccounts } from '@/hooks';
+import type { Account } from '@/lib/api';
+import { formatCurrency, toAmount } from '@/lib/utils';
+
+function statusVariant(status: string) {
+  switch ((status || '').toLowerCase()) {
+    case 'active':
+      return 'success' as const;
+    case 'frozen':
+    case 'pending':
+      return 'warning' as const;
+    case 'closed':
+      return 'destructive' as const;
+    default:
+      return 'secondary' as const;
+  }
+}
 
 export default function AccountsPage() {
-  const { accounts, total, page, limit, totalPages, isLoading, error, refetch } = useAccounts({
+  const { accounts, total, page, totalPages, isLoading, error, refetch } = useAccounts({
     page: 1,
     limit: 10,
   });
-  const { success, error: showError } = useToast();
+
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [typeFilter, setTypeFilter] = useState<string>('');
+  const [status, setStatus] = useState('');
+  const [accountType, setAccountType] = useState('');
 
-  const handleSearch = () => {
-    refetch({ page: 1, search, status: statusFilter, accountType: typeFilter });
+  const applyFilters = (nextPage = 1) => {
+    refetch({ page: nextPage, limit: 10, search, status, accountType });
   };
 
-  const handlePageChange = (newPage: number) => {
-    refetch({ page: newPage, search, status: statusFilter, accountType: typeFilter });
+  const resetFilters = () => {
+    setSearch('');
+    setStatus('');
+    setAccountType('');
+    refetch({ page: 1, limit: 10 });
   };
 
-  const maskAccountNumber = (accountNumber: string) => {
-    if (!accountNumber) return '';
-    const visible = accountNumber.slice(-4);
-    const masked = '*'.repeat(accountNumber.length - 4);
-    return `${masked}${visible}`;
-  };
+  const totalBalance = accounts.reduce((sum, account) => sum + toAmount(account.balance), 0);
+  const totalAvailable = accounts.reduce(
+    (sum, account) => sum + toAmount(account.availableBalance),
+    0
+  );
+  const currency = accounts[0]?.currency || 'USD';
 
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'active':
-        return 'success';
-      case 'frozen':
-        return 'warning';
-      case 'closed':
-        return 'error';
-      case 'pending':
-        return 'info';
-      default:
-        return 'secondary';
-    }
-  };
-
-  const columns = [
+  const columns: Column<Account>[] = [
     {
-      header: 'Account Number',
-      accessor: 'accountNumber',
-      cell: (row: any) => (
-        <div className="font-mono">
-          {maskAccountNumber(row.accountNumber)}
+      header: 'Account',
+      cell: (row) => (
+        <div className="min-w-0">
+          <Link
+            href={`/accounts/${row.id}`}
+            className="block truncate text-sm font-semibold text-foreground hover:text-primary"
+          >
+            {row.name}
+          </Link>
+          <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+            •••• {String(row.accountNumber || '').slice(-4)}
+          </p>
         </div>
       ),
     },
     {
-      header: 'Name',
-      accessor: 'name',
-    },
-    {
       header: 'Type',
-      accessor: 'accountType',
+      cell: (row) => (
+        <span className="text-sm capitalize text-muted-foreground">
+          {row.accountType?.toLowerCase()}
+        </span>
+      ),
     },
     {
       header: 'Currency',
-      accessor: 'currency',
+      cell: (row) => <span className="text-sm font-medium">{row.currency}</span>,
     },
     {
       header: 'Balance',
-      accessor: 'balance',
-      cell: (row: any) => (
-        <div className="text-right font-medium">
+      className: 'text-right',
+      cell: (row) => (
+        <span className="block text-right text-sm font-semibold">
           {formatCurrency(row.balance, row.currency)}
-        </div>
+        </span>
       ),
     },
     {
       header: 'Available',
-      accessor: 'availableBalance',
-      cell: (row: any) => (
-        <div className="text-right font-medium">
+      className: 'text-right',
+      cell: (row) => (
+        <span className="block text-right text-sm text-muted-foreground">
           {formatCurrency(row.availableBalance, row.currency)}
-        </div>
+        </span>
       ),
     },
     {
       header: 'Status',
-      accessor: 'status',
-      cell: (row: any) => (
-        <Badge variant={getStatusBadgeVariant(row.status)}>
-          {row.status}
-        </Badge>
-      ),
+      cell: (row) => <Badge variant={statusVariant(row.status)}>{row.status}</Badge>,
     },
     {
-      header: 'Created',
-      accessor: 'createdAt',
-      cell: (row: any) => (
-        <div className="text-sm text-muted-foreground">
-          {new Date(row.createdAt).toLocaleDateString()}
-        </div>
+      header: 'Opened',
+      cell: (row) => (
+        <span className="text-sm text-muted-foreground">
+          {new Date(row.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+        </span>
       ),
     },
     {
       header: 'Actions',
-      cell: (row: any) => (
-        <Link href={`/accounts/${row.id}`} passHref>
-          <Button variant="ghost" size="sm">
-            View
-          </Button>
-        </Link>
+      className: 'text-right',
+      cell: (row) => (
+        <Button asChild variant="ghost" size="sm">
+          <Link href={`/accounts/${row.id}`}>View</Link>
+        </Button>
       ),
     },
   ];
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">My Accounts</h1>
-        </div>
-        <Card className="p-8">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-            <p>Loading accounts...</p>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">My Accounts</h1>
-        </div>
-        <Card className="p-8">
-          <div className="text-center text-red-500">
-            <p>Error: {error}</p>
-            <Button onClick={() => refetch()} className="mt-4">
-              Retry
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">My Accounts</h1>
-        <div className="text-sm text-muted-foreground">
-          Total: {total} account(s)
-        </div>
-      </div>
+    <div>
+      <PageHeader
+        eyebrow="Everyday banking"
+        title="Accounts"
+        description="Every Crestline Capital account you hold, with live balances, status and statements."
+        actions={
+          <>
+            <Button asChild>
+              <Link href="/transfer">
+                <Send className="h-4 w-4" />
+                Send money
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/deposit">
+                <Download className="h-4 w-4" />
+                Deposit
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
-      {/* Filters */}
-      <Card className="p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Search</label>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search accounts..."
-              className="w-full p-2 border rounded"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Status</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full p-2 border rounded"
-            >
-              <option value="">All Statuses</option>
-              <option value="active">Active</option>
-              <option value="frozen">Frozen</option>
-              <option value="closed">Closed</option>
-              <option value="pending">Pending</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Type</label>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full p-2 border rounded"
-            >
-              <option value="">All Types</option>
-              <option value="savings">Savings</option>
-              <option value="current">Current</option>
-              <option value="domiciliary">Domiciliary</option>
-            </select>
-          </div>
+      {!isLoading && !error && accounts.length > 0 && (
+        <div className="mb-6 grid gap-5 sm:grid-cols-3">
+          <StatCard
+            label="Combined balance"
+            value={formatCurrency(totalBalance, currency)}
+            hint={`${total} account${total === 1 ? '' : 's'}`}
+            icon={Landmark}
+            tone="primary"
+          />
+          <StatCard
+            label="Available to spend"
+            value={formatCurrency(totalAvailable, currency)}
+            hint="After pending holds"
+            icon={Download}
+            tone="success"
+          />
+          <StatCard
+            label="Accounts on this page"
+            value={String(accounts.length)}
+            hint={`Page ${page} of ${Math.max(totalPages, 1)}`}
+            icon={Search}
+          />
         </div>
-        <div className="mt-4">
-          <Button onClick={handleSearch} variant="outline">
-            Apply Filters
+      )}
+
+      <section className="chase-card mb-6 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold tracking-tight">Filter accounts</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Narrow the list by name, status or account type.
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" onClick={resetFilters}>
+            Clear filters
           </Button>
         </div>
-      </Card>
 
-      {/* Accounts Table */}
-      <Card className="p-6">
-        {accounts.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">No accounts found</p>
-            <Link href="/" passHref>
-              <Button>Create Account</Button>
-            </Link>
+        <form
+          className="mt-5 grid gap-4 md:grid-cols-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyFilters();
+          }}
+        >
+          <Input
+            label="Search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Account name or number"
+          />
+          <Select
+            label="Status"
+            value={status}
+            onValueChange={setStatus}
+            placeholder="All statuses"
+          >
+            <Select.Option value="">All statuses</Select.Option>
+            <Select.Option value="active">Active</Select.Option>
+            <Select.Option value="frozen">Frozen</Select.Option>
+            <Select.Option value="pending">Pending</Select.Option>
+            <Select.Option value="closed">Closed</Select.Option>
+          </Select>
+          <Select
+            label="Account type"
+            value={accountType}
+            onValueChange={setAccountType}
+            placeholder="All types"
+          >
+            <Select.Option value="">All types</Select.Option>
+            <Select.Option value="savings">Savings</Select.Option>
+            <Select.Option value="current">Current</Select.Option>
+            <Select.Option value="domiciliary">Domiciliary</Select.Option>
+          </Select>
+          <div className="md:col-span-3">
+            <Button type="submit" isLoading={isLoading}>
+              Apply filters
+            </Button>
           </div>
+        </form>
+      </section>
+
+      <section className="chase-card p-6">
+        {isLoading ? (
+          <LoadingRows rows={4} />
+        ) : error ? (
+          <ErrorState
+            title="We could not load your accounts"
+            description={error}
+            action={
+              <Button variant="outline" onClick={() => refetch()}>
+                Try again
+              </Button>
+            }
+          />
+        ) : accounts.length === 0 ? (
+          <EmptyState
+            icon={Landmark}
+            title={search || status || accountType ? 'No accounts match those filters' : 'No accounts yet'}
+            description={
+              search || status || accountType
+                ? 'Try widening your search or clearing the filters.'
+                : 'Your accounts will appear here as soon as they are opened for you.'
+            }
+            action={
+              search || status || accountType ? (
+                <Button variant="outline" onClick={resetFilters}>
+                  Clear filters
+                </Button>
+              ) : (
+                <Button asChild>
+                  <Link href="/support">Talk to an account specialist</Link>
+                </Button>
+              )
+            }
+          />
         ) : (
           <DataTable
             columns={columns}
             data={accounts}
+            keyExtractor={(row) => row.id}
             pagination={{
               currentPage: page,
-              totalPages: totalPages,
+              totalPages: Math.max(totalPages, 1),
               totalItems: total,
-              onPageChange: handlePageChange,
+              onPageChange: (nextPage) => applyFilters(nextPage),
             }}
           />
         )}
-      </Card>
+      </section>
     </div>
   );
 }

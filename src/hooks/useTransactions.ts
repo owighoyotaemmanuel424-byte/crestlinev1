@@ -67,9 +67,12 @@ export function useTransactions(initialParams?: TransactionListParams): UseTrans
     }
   }, [state.page, state.limit]);
 
+  const paramsKey = JSON.stringify(initialParams ?? {});
+
   useEffect(() => {
     refetch(initialParams);
-  }, [refetch, initialParams]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramsKey]);
 
   return {
     ...state,

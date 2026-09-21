@@ -5,7 +5,6 @@ import {
   NotFoundError,
   ValidationError,
   InsufficientBalanceError,
-  InvestmentError,
 } from '../utils/errors';
 import { AccountService } from './account-service';
 import { LedgerService } from './ledger-service';
@@ -16,11 +15,10 @@ import type {
   Investment,
   InvestmentStatus,
   InvestmentType,
-  InvestmentRiskLevel,
-  Role,
-  Currency,
-  Journal,
 } from '@prisma/client';
+
+type InvestmentRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+type Currency = string;
 
 // ============================================
 // DECIMAL UTILITIES
@@ -86,9 +84,8 @@ export interface CreateInvestmentData {
 
 export interface InvestmentResult {
   investment: Investment & {
-    user: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'>;
-    account: Pick<Account, 'id' | 'accountNumber' | 'balance' | 'availableBalance'>;
-    journal?: Journal | null;
+    user?: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'> | null;
+    account?: Pick<Account, 'id' | 'accountNumber' | 'balance' | 'availableBalance'> | null;
   };
 }
 
@@ -152,20 +149,14 @@ export class InvestmentService {
 
     // Validate amount using Decimal
     const amount = toDecimal(data.amount);
-    if (amount.lessThanOrEqual(new Decimal(0))) {
+    if (amount.lessThan(INVESTMENT_CONFIG.MIN_INVESTMENT_AMOUNT)) {
       throw new ValidationError('Amount must be positive');
     }
-    if (amount.lessThan(INVESTMENT_CONFIG.MIN_INVESTMENT_AMOUNT)) {
+    if (amount.greaterThan(INVESTMENT_CONFIG.MAX_INVESTMENT_AMOUNT)) {
       throw new ValidationError(
         `Minimum investment amount is ${INVESTMENT_CONFIG.MIN_INVESTMENT_AMOUNT.toString()}`
       );
     }
-    if (amount.greaterThan(INVESTMENT_CONFIG.MAX_INVESTMENT_AMOUNT)) {
-      throw new ValidationError(
-        `Maximum investment amount is ${INVESTMENT_CONFIG.MAX_INVESTMENT_AMOUNT.toString()}`
-      );
-    }
-
     // Validate duration
     if (data.durationDays < INVESTMENT_CONFIG.MIN_DURATION_DAYS) {
       throw new ValidationError(
@@ -179,12 +170,12 @@ export class InvestmentService {
     }
 
     // Check sufficient balance using Decimal comparison
-    const availableBalance = toDecimal(account.availableBalance);
-    if (availableBalance.lessThan(amount)) {
+    const available = toDecimal(account.availableBalance);
+    if (available.lessThanOrEqualTo(amount)) {
       throw new InsufficientBalanceError(
         account.id,
         amount.toNumber(),
-        availableBalance.toNumber()
+        available.toNumber()
       );
     }
 
@@ -192,8 +183,8 @@ export class InvestmentService {
     const currency = data.currency || account.currency;
 
     // Get risk level and interest rate
-    const riskLevel = INVESTMENT_CONFIG.RISK_LEVELS[data.investmentType];
-    const interestRate = INVESTMENT_CONFIG.INTEREST_RATES[data.investmentType];
+    const riskLevel: InvestmentRiskLevel = (INVESTMENT_CONFIG.RISK_LEVELS as Record<string, InvestmentRiskLevel>)[data.investmentType] ?? 'MEDIUM';
+    const interestRate = (INVESTMENT_CONFIG.INTEREST_RATES as Record<string, Decimal>)[data.investmentType] ?? new Decimal(0.08);
 
     // Calculate maturity date
     const maturityDate = new Date();
@@ -222,8 +213,8 @@ export class InvestmentService {
           riskLevel,
           status: 'ACTIVE' as InvestmentStatus,
           description: data.description || null,
-          metadata: data.metadata || null,
-        },
+          metadata: (data.metadata || null) as any,
+        } as any,
         include: {
           user: {
             select: {
@@ -241,7 +232,6 @@ export class InvestmentService {
               availableBalance: true,
             },
           },
-          journal: true,
         },
       });
 
@@ -255,10 +245,9 @@ export class InvestmentService {
             entryType: 'DEBIT',
             amount: amount,
             description: `Investment in ${data.investmentType} - Amount: ${amount.toString()}, Duration: ${data.durationDays} days`,
-            transactionId: investment.id,
           },
         ],
-        investmentId: investment.id,
+        investmentTransactionId: investment.id,
         metadata: {
           investmentId: investment.id,
           accountId: data.accountId,
@@ -275,7 +264,7 @@ export class InvestmentService {
         accountId: data.accountId,
         amount: amount,
         operation: 'ADJUSTMENT',
-        reference: investment.reference,
+        reference: investment.reference ?? undefined,
         description: `Investment in ${data.investmentType}`,
         metadata: { investmentId: investment.id },
       }, actingUserId);
@@ -299,8 +288,8 @@ export class InvestmentService {
             interestRate: interestRate.toString(),
             projectedReturns: projectedReturns.toString(),
             riskLevel,
-          },
-          metadata: data.metadata,
+          } as any,
+          metadata: data.metadata as any,
           status: 'SUCCESS',
         },
       });
@@ -345,7 +334,6 @@ export class InvestmentService {
             availableBalance: true,
           },
         },
-        journal: true,
       },
     });
 
@@ -386,7 +374,7 @@ export class InvestmentService {
       }
     }
 
-    const where: Record<string, unknown> = { userId };
+    const where: any = { userId };
     if (status) where.status = status;
     if (investmentType) where.investmentType = investmentType;
     if (riskLevel) where.riskLevel = riskLevel;
@@ -400,7 +388,7 @@ export class InvestmentService {
       where,
       skip: (page - 1) * limit,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { purchasedAt: 'desc' },
       include: {
         user: true,
         account: true,
@@ -435,7 +423,7 @@ export class InvestmentService {
       throw new ForbiddenError('Only authorized personnel can view all investments');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (status) where.status = status;
     if (investmentType) where.investmentType = investmentType;
     if (riskLevel) where.riskLevel = riskLevel;
@@ -445,7 +433,7 @@ export class InvestmentService {
       where,
       skip: (page - 1) * limit,
       take: limit,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { purchasedAt: 'desc' },
       include: {
         user: true,
         account: true,
@@ -493,7 +481,7 @@ export class InvestmentService {
     // Calculate liquidation amount using Decimal arithmetic
     // Apply penalty for early withdrawal (5% for first 90 days, 3% for 90-180 days, 1% for 180+ days)
     const today = new Date();
-    const daysHeld = Math.floor((today.getTime() - investment.createdAt.getTime()) / (1000 * 60 * 60 * 24));
+    const daysHeld = Math.floor((today.getTime() - investment.purchasedAt.getTime()) / (1000 * 60 * 60 * 24));
     
     let penaltyRate: Decimal;
     if (daysHeld < 90) {
@@ -504,20 +492,22 @@ export class InvestmentService {
       penaltyRate = new Decimal(0.01); // 1%
     }
 
-    const amount = toDecimal(investment.amount);
+    const amount = toDecimal(investment.amount ?? 0);
     const penalty = amount.times(penaltyRate);
     const liquidationAmount = amount.minus(penalty);
-
     return await prisma.$transaction(async (tx) => {
       const liquidatedInvestment = await tx.investment.update({
         where: { id },
         data: {
-          status: 'LIQUIDATED' as InvestmentStatus,
+          status: 'SOLD' as InvestmentStatus,
           liquidatedAt: new Date(),
-          liquidatedById: actingUserId,
-          liquidationAmount,
-          liquidationPenalty: penalty,
-          liquidationReason: reason || null,
+          metadata: {
+            ...(investment.metadata as Record<string, unknown> | null),
+            liquidatedById: actingUserId,
+            liquidationAmount: liquidationAmount.toString(),
+            liquidationPenalty: penalty.toString(),
+            liquidationReason: reason || null,
+          } as any,
         },
         include: {
           user: {
@@ -536,7 +526,6 @@ export class InvestmentService {
               availableBalance: true,
             },
           },
-          journal: true,
         },
       });
 
@@ -546,14 +535,13 @@ export class InvestmentService {
         description: `Investment liquidation ${investment.reference} - ${liquidationAmount.toString()} ${investment.currency}`,
         entries: [
           {
-            accountId: investment.accountId,
+            accountId: investment.accountId!,
             entryType: 'CREDIT',
             amount: liquidationAmount,
             description: `Liquidation of investment ${investment.reference} - Amount: ${liquidationAmount.toString()}, Penalty: ${penalty.toString()}`,
-            transactionId: liquidatedInvestment.id,
           },
         ],
-        investmentId: liquidatedInvestment.id,
+        investmentTransactionId: liquidatedInvestment.id,
         metadata: {
           investmentId: liquidatedInvestment.id,
           accountId: investment.accountId,
@@ -565,10 +553,10 @@ export class InvestmentService {
 
       // Update account balance using Decimal arithmetic
       await AccountService.updateBalance({
-        accountId: investment.accountId,
+        accountId: investment.accountId!,
         amount: liquidationAmount,
         operation: 'ADJUSTMENT',
-        reference: liquidatedInvestment.reference,
+        reference: liquidatedInvestment.reference ?? undefined,
         description: `Liquidation of investment ${investment.reference}`,
         metadata: { investmentId: liquidatedInvestment.id },
       }, actingUserId);
@@ -594,7 +582,7 @@ export class InvestmentService {
       // Send notification
       await tx.notification.create({
         data: {
-          userId: investment.userId,
+          userId: investment.userId!,
           title: 'Investment Liquidated',
           message: `Your investment ${investment.reference} has been liquidated. Amount received: ${liquidationAmount.toString()} ${investment.currency}. Penalty: ${penalty.toString()} ${investment.currency}`,
           type: 'INFO',
@@ -634,23 +622,26 @@ export class InvestmentService {
       throw new ValidationError('Only active investments can be marked as matured');
     }
 
-    if (new Date() < investment.maturityDate) {
+    if (investment.maturityDate && new Date() < investment.maturityDate) {
       throw new ValidationError('Investment has not reached maturity date yet');
     }
 
     // Calculate maturity amount with full returns using Decimal arithmetic
-    const amount = toDecimal(investment.amount);
-    const returns = toDecimal(investment.projectedReturns);
+    const amount = toDecimal(investment.amount ?? 0);
+    const returns = toDecimal(investment.projectedReturns ?? 0);
     const maturityAmount = amount.plus(returns);
 
     return await prisma.$transaction(async (tx) => {
       const maturedInvestment = await tx.investment.update({
         where: { id },
         data: {
-          status: 'MATURED' as InvestmentStatus,
-          maturedAt: new Date(),
-          maturedById: actingUserId,
-          maturityAmount,
+          status: 'SOLD' as InvestmentStatus,
+          metadata: {
+            ...(investment.metadata as Record<string, unknown> | null),
+            maturedById: actingUserId,
+            maturityAmount: maturityAmount.toString(),
+            maturedAt: new Date().toISOString(),
+          } as any,
         },
         include: {
           user: {
@@ -669,7 +660,6 @@ export class InvestmentService {
               availableBalance: true,
             },
           },
-          journal: true,
         },
       });
 
@@ -679,14 +669,13 @@ export class InvestmentService {
         description: `Investment maturity ${investment.reference} - ${maturityAmount.toString()} ${investment.currency}`,
         entries: [
           {
-            accountId: investment.accountId,
+            accountId: investment.accountId!,
             entryType: 'CREDIT',
             amount: maturityAmount,
             description: `Maturity of investment ${investment.reference} - Principal: ${amount.toString()}, Returns: ${returns.toString()}`,
-            transactionId: maturedInvestment.id,
           },
         ],
-        investmentId: maturedInvestment.id,
+        investmentTransactionId: maturedInvestment.id,
         metadata: {
           investmentId: maturedInvestment.id,
           accountId: investment.accountId,
@@ -699,10 +688,10 @@ export class InvestmentService {
 
       // Update account balance using Decimal arithmetic
       await AccountService.updateBalance({
-        accountId: investment.accountId,
+        accountId: investment.accountId!,
         amount: maturityAmount,
         operation: 'ADJUSTMENT',
-        reference: maturedInvestment.reference,
+        reference: maturedInvestment.reference ?? undefined,
         description: `Maturity of investment ${investment.reference}`,
         metadata: { investmentId: maturedInvestment.id },
       }, actingUserId);
@@ -726,7 +715,7 @@ export class InvestmentService {
       // Send notification
       await tx.notification.create({
         data: {
-          userId: investment.userId,
+          userId: investment.userId!,
           title: 'Investment Matured',
           message: `Your investment ${investment.reference} has matured. Total amount: ${maturityAmount.toString()} ${investment.currency} (Principal: ${amount.toString()}, Returns: ${returns.toString()})`,
           type: 'SUCCESS',
@@ -754,9 +743,8 @@ export class InvestmentService {
     // Group by status
     const byStatus: Record<InvestmentStatus, number> = {
       ACTIVE: 0,
-      MATURED: 0,
-      LIQUIDATED: 0,
-      CLOSED: 0,
+      PENDING: 0,
+      SOLD: 0,
     };
 
     const statusCounts = await prisma.investment.groupBy({
@@ -770,12 +758,14 @@ export class InvestmentService {
 
     // Group by type
     const byType: Record<InvestmentType, number> = {
-      FIXED_DEPOSIT: 0,
-      TREASURY_BILL: 0,
-      BOND: 0,
-      MUTUAL_FUND: 0,
       STOCK: 0,
-      REIT: 0,
+      BOND: 0,
+      ETF: 0,
+      MUTUAL_FUND: 0,
+      CRYPTO: 0,
+      COMMODITY: 0,
+      REAL_ESTATE: 0,
+      OTHER: 0,
     };
 
     const typeCounts = await prisma.investment.groupBy({
@@ -810,7 +800,7 @@ export class InvestmentService {
     });
 
     const totalAmount = allInvestments
-      .reduce((sum, i) => sum.plus(toDecimal(i.amount)), new Decimal(0))
+      .reduce((sum, i) => sum.plus(toDecimal(i.amount ?? 0)), new Decimal(0))
       .toNumber();
 
     // Calculate total returns using Decimal arithmetic
@@ -820,17 +810,17 @@ export class InvestmentService {
     });
 
     const totalReturns = activeInvestmentsList
-      .reduce((sum, i) => sum.plus(toDecimal(i.projectedReturns)), new Decimal(0))
+      .reduce((sum, i) => sum.plus(toDecimal(i.projectedReturns ?? 0)), new Decimal(0))
       .toNumber();
 
     // Calculate average amount using Decimal arithmetic
     const averageAmount = allInvestments.length > 0
-      ? allInvestments.reduce((sum, i) => sum.plus(toDecimal(i.amount)), new Decimal(0)).div(allInvestments.length).toNumber()
+      ? allInvestments.reduce((sum, i) => sum.plus(toDecimal(i.amount ?? 0)), new Decimal(0)).div(allInvestments.length).toNumber()
       : 0;
 
     // Calculate average return rate
-    const averageReturnRate = activeInvestmentsList.length > 0
-      ? activeInvestmentsList.reduce((sum, i) => sum.plus(toDecimal(i.projectedReturns)), new Decimal(0)).div(activeInvestmentsList.length).div(allInvestments.reduce((s, i) => s.plus(toDecimal(i.amount)), new Decimal(0))).toNumber()
+    const averageReturnRate = activeInvestmentsList.length > 0 && allInvestments.length > 0
+      ? activeInvestmentsList.reduce((sum, i) => sum.plus(toDecimal(i.projectedReturns ?? 0)), new Decimal(0)).div(activeInvestmentsList.length).div(allInvestments.reduce((s, i) => s.plus(toDecimal(i.amount ?? 0)), new Decimal(0))).toNumber()
       : 0;
 
     // Count maturing soon (within 7 days)

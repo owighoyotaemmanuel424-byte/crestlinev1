@@ -1,7 +1,12 @@
 import { prisma } from '../prisma';
 import bcrypt from 'bcryptjs';
 import { ForbiddenError, NotFoundError, ValidationError } from '../utils/errors';
-import { generateToken, generateShortCode } from '../utils/security';
+import { generateToken } from '../utils/security';
+import crypto from 'crypto';
+
+function generateShortCode(length: number = 8): string {
+  return crypto.randomBytes(Math.ceil(length / 2)).toString('hex').slice(0, length).toUpperCase();
+}
 import type { SecuritySettings, User } from '@prisma/client';
 
 export interface UpdateSecuritySettingsData {
@@ -100,7 +105,7 @@ export class SecurityService {
     await prisma.auditLog.create({
       data: {
         actorId: userId,
-        action: 'CHANGE_PASSWORD',
+        action: 'RESET_PASSWORD',
         resourceType: 'USER',
         resourceId: userId,
         status: 'SUCCESS',
@@ -138,7 +143,7 @@ export class SecurityService {
     await prisma.auditLog.create({
       data: {
         actorId: userId,
-        action: 'ENABLE_2FA',
+        action: 'UPDATE',
         resourceType: 'SECURITY_SETTINGS',
         resourceId: settings.id,
         status: 'SUCCESS',
@@ -164,7 +169,7 @@ export class SecurityService {
     await prisma.auditLog.create({
       data: {
         actorId: userId,
-        action: 'CONFIRM_2FA',
+        action: 'VERIFY',
         resourceType: 'SECURITY_SETTINGS',
         resourceId: settings.id,
         status: 'SUCCESS',
@@ -197,14 +202,14 @@ export class SecurityService {
       data: {
         twoFactorEnabled: false,
         twoFactorSecret: null,
-        backupCodes: null,
+
       },
     });
 
     await prisma.auditLog.create({
       data: {
         actorId: userId,
-        action: 'DISABLE_2FA',
+        action: 'UPDATE',
         resourceType: 'SECURITY_SETTINGS',
         resourceId: userId,
         status: 'SUCCESS',
@@ -230,7 +235,7 @@ export class SecurityService {
     }
 
     if (settings.backupCodes) {
-      const backupCodes: string[] = JSON.parse(settings.backupCodes);
+      const backupCodes: string[] = JSON.parse(settings.backupCodes as string);
       if (backupCodes.includes(code)) {
         const updatedBackupCodes = backupCodes.filter(c => c !== code);
         await prisma.securitySettings.update({
@@ -271,7 +276,7 @@ export class SecurityService {
     const alerts = await prisma.auditLog.findMany({
       where: {
         actorId: userId,
-        action: { in: ['LOGIN', 'FREEZE', 'UNFREEZE', 'CHANGE_PASSWORD', 'RESET_PASSWORD'] },
+        action: { in: ['LOGIN', 'FREEZE', 'UNFREEZE', 'RESET_PASSWORD'] },
         resourceType: { in: ['USER', 'ACCOUNT', 'CARD', 'SECURITY_SETTINGS'] },
       },
       skip: (page - 1) * limit,
@@ -282,7 +287,7 @@ export class SecurityService {
     const total = await prisma.auditLog.count({
       where: {
         actorId: userId,
-        action: { in: ['LOGIN', 'FREEZE', 'UNFREEZE', 'CHANGE_PASSWORD', 'RESET_PASSWORD'] },
+        action: { in: ['LOGIN', 'FREEZE', 'UNFREEZE', 'RESET_PASSWORD'] },
         resourceType: { in: ['USER', 'ACCOUNT', 'CARD', 'SECURITY_SETTINGS'] },
       },
     });
@@ -306,7 +311,7 @@ export class SecurityService {
     await prisma.auditLog.create({
       data: {
         actorId: userId,
-        action: 'ADD_TRUSTED_DEVICE',
+        action: 'CREATE',
         resourceType: 'SECURITY_SETTINGS',
         resourceId: settings.id,
         metadata: { deviceId, deviceName },
@@ -329,7 +334,7 @@ export class SecurityService {
     await prisma.auditLog.create({
       data: {
         actorId: userId,
-        action: 'REMOVE_TRUSTED_DEVICE',
+        action: 'DELETE',
         resourceType: 'SECURITY_SETTINGS',
         resourceId: settings.id,
         metadata: { deviceId },

@@ -33,7 +33,7 @@ declare module 'next-auth' {
   }
 }
 
-declare module '@auth/core/jwt' {
+declare module 'next-auth/jwt' {
   interface JWT {
     id: string;
     email: string;
@@ -121,7 +121,7 @@ export async function validateUser(email: string, password: string): Promise<Use
 
 // NextAuth configuration
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as any,
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -156,8 +156,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               resourceType: 'USER',
               resourceId: user.id,
               metadata: {
-                ipAddress: credentials.ipAddress,
-                userAgent: credentials.userAgent,
+                ipAddress: (credentials as any).ipAddress,
+                userAgent: (credentials as any).userAgent,
               },
               status: 'SUCCESS',
             },
@@ -171,7 +171,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             status: user.status,
             emailVerified: user.emailVerified,
             phoneVerified: user.phoneVerified,
-            avatarUrl: user.profile?.avatarUrl || null,
+            avatarUrl: null,
           };
         } catch (error) {
           // Log failed login attempt
@@ -187,8 +187,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                   resourceType: 'USER',
                   resourceId: user.id,
                   metadata: {
-                    ipAddress: credentials.ipAddress,
-                    userAgent: credentials.userAgent,
+                    ipAddress: (credentials as any).ipAddress,
+                    userAgent: (credentials as any).userAgent,
                     error: error instanceof Error ? error.message : 'Unknown error',
                   },
                   status: 'FAILURE',
@@ -210,9 +210,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.name = user.name;
         token.role = user.role;
         token.status = user.status;
-        token.emailVerified = user.emailVerified;
-        token.phoneVerified = user.phoneVerified;
-        token.avatarUrl = user.avatarUrl;
+        token.emailVerified = user.emailVerified !== null;
+        token.phoneVerified = user.phoneVerified !== null;
+        token.avatarUrl = (user as any).avatarUrl || null;
       }
       return token;
     },

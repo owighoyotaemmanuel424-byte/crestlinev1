@@ -7,11 +7,11 @@ import {
   ConflictError,
   AppError,
 } from '../utils/errors';
-import type {
-  User,
-  SupportTicket,
-  SupportMessage,
-  SupportAttachment,
+import {
+  type User,
+  type SupportTicket,
+  type SupportMessage,
+  type SupportAttachment,
   SupportCategory,
   SupportPriority,
   SupportTicketStatus,
@@ -195,7 +195,7 @@ export class SupportService {
   static async createTicket(
     data: CreateTicketData,
     actingUserId: string
-  ): Promise<TicketResult> {
+  ): Promise<TicketResult['ticket']> {
     const user = await prisma.user.findUnique({ where: { id: data.userId } });
     if (!user) throw new NotFoundError('User', data.userId);
 
@@ -229,7 +229,7 @@ export class SupportService {
         priority: data.priority || SUPPORT_CONFIG.DEFAULT_PRIORITY,
         description: data.description,
         status: 'OPEN' as SupportTicketStatus,
-        metadata: data.metadata || null,
+        metadata: data.metadata as any,
       },
       include: {
         user: {
@@ -315,7 +315,7 @@ export class SupportService {
           category: data.category,
           priority: data.priority || SUPPORT_CONFIG.DEFAULT_PRIORITY,
         },
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         status: 'SUCCESS',
       },
     });
@@ -353,7 +353,7 @@ export class SupportService {
   static async getTicketById(
     id: string,
     actingUserId: string
-  ): Promise<TicketResult> {
+  ): Promise<TicketResult['ticket']> {
     const ticket = await prisma.supportTicket.findUnique({
       where: { id },
       include: {
@@ -413,7 +413,7 @@ export class SupportService {
   static async getTicketByReference(
     reference: string,
     actingUserId: string
-  ): Promise<TicketResult> {
+  ): Promise<TicketResult['ticket']> {
     const ticket = await prisma.supportTicket.findUnique({
       where: { reference },
       include: {
@@ -491,7 +491,7 @@ export class SupportService {
       }
     }
 
-    const where: Record<string, unknown> = { userId };
+    const where: any = { userId };
     if (status) where.status = status;
     if (category) where.category = category;
     if (priority) where.priority = priority;
@@ -579,7 +579,7 @@ export class SupportService {
       throw new ForbiddenError('Only support personnel can view all tickets');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (status) where.status = status;
     if (category) where.category = category;
     if (priority) where.priority = priority;
@@ -660,7 +660,7 @@ export class SupportService {
     id: string,
     data: UpdateTicketData,
     actingUserId: string
-  ): Promise<TicketResult> {
+  ): Promise<TicketResult['ticket']> {
     const ticket = await prisma.supportTicket.findUnique({
       where: { id },
       include: {
@@ -693,7 +693,7 @@ export class SupportService {
         priority: data.priority,
         status: data.status,
         assignedToId: data.assignedToId,
-        metadata: data.metadata,
+        metadata: data.metadata as any,
       },
       include: {
         user: {
@@ -770,7 +770,7 @@ export class SupportService {
     ticketId: string,
     assignedToId: string,
     actingUserId: string
-  ): Promise<TicketResult> {
+  ): Promise<TicketResult['ticket']> {
     const ticket = await prisma.supportTicket.findUnique({
       where: { id: ticketId },
       include: {
@@ -888,7 +888,7 @@ export class SupportService {
   static async resolveTicket(
     data: ResolveTicketData,
     actingUserId: string
-  ): Promise<TicketResult> {
+  ): Promise<TicketResult['ticket']> {
     const ticket = await prisma.supportTicket.findUnique({
       where: { id: data.ticketId },
       include: {
@@ -1011,7 +1011,7 @@ export class SupportService {
   /**
    * Close a ticket
    */
-  static async closeTicket(id: string, actingUserId: string): Promise<TicketResult> {
+  static async closeTicket(id: string, actingUserId: string): Promise<TicketResult['ticket']> {
     const ticket = await prisma.supportTicket.findUnique({
       where: { id },
       include: {
@@ -1116,7 +1116,7 @@ export class SupportService {
   static async addMessage(
     data: AddMessageData,
     actingUserId: string
-  ): Promise<MessageResult> {
+  ): Promise<MessageResult['message']> {
     const ticket = await prisma.supportTicket.findUnique({
       where: { id: data.ticketId },
       include: { user: true },
@@ -1217,7 +1217,7 @@ export class SupportService {
           senderId: data.senderId,
           isInternal: data.isInternal || false,
         },
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         status: 'SUCCESS',
       },
     });
@@ -1280,7 +1280,7 @@ export class SupportService {
   static async getMessageById(
     id: string,
     actingUserId: string
-  ): Promise<MessageResult> {
+  ): Promise<MessageResult['message']> {
     const message = await prisma.supportMessage.findUnique({
       where: { id },
       include: {
@@ -1333,7 +1333,7 @@ export class SupportService {
     // Authorization check
     await this.verifyTicketAccess(ticket, actingUserId);
 
-    const where: Record<string, unknown> = { ticketId };
+    const where: any = { ticketId };
     if (isInternal !== undefined) where.isInternal = isInternal;
 
     const messages = await prisma.supportMessage.findMany({
@@ -1380,7 +1380,7 @@ export class SupportService {
     id: string,
     data: UpdateMessageData,
     actingUserId: string
-  ): Promise<MessageResult> {
+  ): Promise<MessageResult['message']> {
     const message = await prisma.supportMessage.findUnique({
       where: { id },
       include: {
@@ -1424,7 +1424,7 @@ export class SupportService {
       data: {
         message: data.message,
         isInternal: data.isInternal,
-        metadata: data.metadata,
+        metadata: data.metadata as any,
       },
       include: {
         ticket: {
@@ -1458,7 +1458,7 @@ export class SupportService {
           message: data.message || message.message,
           isInternal: data.isInternal !== undefined ? data.isInternal : message.isInternal,
         },
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         status: 'SUCCESS',
       },
     });
@@ -1476,7 +1476,7 @@ export class SupportService {
   static async getAttachmentById(
     id: string,
     actingUserId: string
-  ): Promise<AttachmentResult> {
+  ): Promise<AttachmentResult['attachment']> {
     const attachment = await prisma.supportAttachment.findUnique({
       where: { id },
       include: {
@@ -1500,7 +1500,7 @@ export class SupportService {
 
     // Authorization check
     if (attachment.ticket) {
-      await this.verifyTicketAccess(attachment.ticket, actingUserId);
+      await this.verifyTicketAccess(attachment.ticket as SupportTicket, actingUserId);
     }
 
     return this.formatAttachment(attachment);
@@ -1512,7 +1512,7 @@ export class SupportService {
   static async listAttachments(
     ticketId: string,
     actingUserId: string
-  ): Promise<AttachmentResult[]> {
+  ): Promise<AttachmentResult['attachment'][]> {
     const ticket = await prisma.supportTicket.findUnique({ where: { id: ticketId } });
     if (!ticket) throw new NotFoundError('Support Ticket', ticketId);
 
@@ -1538,7 +1538,7 @@ export class SupportService {
       },
     });
 
-    return attachments.map(this.formatAttachment);
+    return attachments.map(a => this.formatAttachment(a));
   }
 
   // ============================================

@@ -2,22 +2,24 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { CheckCircle2, LifeBuoy } from 'lucide-react';
+
+import { AuthLayout } from '@/components/auth-layout';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
+  const [sent, setSent] = useState(false);
+  const [fallback, setFallback] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError('');
-    setMessage('');
+    setIsLoading(true);
 
     try {
       const response = await fetch('/api/auth/forgot-password', {
@@ -25,76 +27,99 @@ export default function ForgotPasswordPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       });
+      const payload = await response.json().catch(() => null);
 
-      if (!response.ok) {
-        const data = await response.json();
-        setError(data.error || 'Request failed');
+      if (response.ok && payload?.success !== false) {
+        setSent(true);
         return;
       }
 
-      setMessage('Password reset link sent to your email. Please check your inbox.');
-    } catch (err) {
-      setError('Network error. Please try again.');
+      if (response.status === 401 || response.status === 403) {
+        setError(payload?.message || payload?.error || 'We could not verify that request.');
+        return;
+      }
+
+      // Reset emails are not enabled in this sandbox build.
+      setFallback(true);
+    } catch {
+      setFallback(true);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <Card className="w-full max-w-md shadow-xl">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-3xl font-bold text-center">
-            <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-              Reset Password
-            </span>
-          </CardTitle>
-          <CardDescription className="text-center">
-            Enter your email to receive a reset link
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent>
-          {error && (
-            <Alert variant="destructive" className="mb-6">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {message ? (
-            <Alert className="mb-6">
-              <AlertDescription className="text-green-600">{message}</AlertDescription>
-            </Alert>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <Input
-                type="email"
-                label="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="user@crestline.com"
-                required
-              />
-
-              <Button
-                type="submit"
-                className="w-full"
-                isLoading={isLoading}
-                size="lg"
-              >
-                Send Reset Link
-              </Button>
-            </form>
-          )}
-        </CardContent>
-
-        <CardFooter className="text-sm text-center text-muted-foreground">
-          Remember your password?{' '}
-          <Link href="/login" className="text-blue-600 hover:underline font-medium">
-            Sign in
+    <AuthLayout
+      title="Reset your password"
+      subtitle="Enter the email address on your account and we will send you a secure reset link."
+      highlights={[
+        'Reset links expire after one hour',
+        'We never email your password',
+        'Support can verify you if you are locked out',
+      ]}
+      footer={
+        <p>
+          Remembered it?{' '}
+          <Link href="/login" className="chase-link">
+            Back to sign in
           </Link>
-        </CardFooter>
-      </Card>
-    </div>
+        </p>
+      }
+    >
+      {error && (
+        <Alert variant="destructive" className="mb-5">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {sent ? (
+        <div className="rounded-xl border border-success/25 bg-success/[0.06] p-6 text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success/10 text-success">
+            <CheckCircle2 className="h-5 w-5" />
+          </span>
+          <h2 className="mt-4 text-lg font-semibold text-foreground">Check your inbox</h2>
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            If <span className="font-medium text-foreground">{email}</span> matches an
+            account, a reset link is on its way. It expires in one hour.
+          </p>
+          <Button asChild variant="outline" className="mt-6">
+            <Link href="/login">Return to sign in</Link>
+          </Button>
+        </div>
+      ) : fallback ? (
+        <div className="space-y-5">
+          <Alert variant="warning" showIcon>
+            <AlertDescription>
+              Automated reset emails are not switched on in this sandbox environment.
+              Our support team can reset your password after verifying your identity.
+            </AlertDescription>
+          </Alert>
+          <Button asChild size="lg" className="w-full">
+            <Link href="/support">
+              <LifeBuoy className="h-4 w-4" />
+              Contact support
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="lg" className="w-full">
+            <Link href="/login">Back to sign in</Link>
+          </Button>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+          <Input
+            type="email"
+            label="Email address"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+            required
+          />
+          <Button type="submit" size="lg" className="w-full" isLoading={isLoading}>
+            Send reset link
+          </Button>
+        </form>
+      )}
+    </AuthLayout>
   );
 }

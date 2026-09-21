@@ -11,3 +11,9 @@ export { useDeposits, type UseDepositsReturn } from './useDeposits';
 export { useWithdrawals, type UseWithdrawalsReturn } from './useWithdrawals';
 export { useBeneficiaries, type UseBeneficiariesReturn } from './useBeneficiaries';
 export { useNotifications, type UseNotificationsReturn } from './useNotifications';
+export {
+  useApiResource,
+  useApiMutation,
+  type UseApiResourceReturn,
+  type UseApiMutationReturn,
+} from './use-api-resource';
