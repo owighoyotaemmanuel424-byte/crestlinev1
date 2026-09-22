@@ -49,12 +49,28 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validated = createDepositSchema.parse(body);
     
+    const DEPOSIT_METHOD_ALIASES: Record<
+      string,
+      'ACH' | 'WIRE' | 'CARD' | 'CASH' | 'CHECK' | 'MOBILE' | 'CRYPTO'
+    > = {
+      ACH: 'ACH',
+      WIRE: 'WIRE',
+      BANK_TRANSFER: 'WIRE',
+      CARD: 'CARD',
+      CASH: 'CASH',
+      CHECK: 'CHECK',
+      MOBILE: 'MOBILE',
+      MOBILE_MONEY: 'MOBILE',
+      USSD: 'MOBILE',
+      CRYPTO: 'CRYPTO',
+    };
+
     const result = await DepositService.createDeposit({
       userId: user.id,
       accountId: validated.accountId,
       amount: validated.amount,
       currency: validated.currency,
-      method: validated.paymentMethod,
+      method: DEPOSIT_METHOD_ALIASES[validated.paymentMethod] ?? 'ACH',
       transactionReference: validated.paymentReference,
       description: validated.description,
       metadata: validated.metadata,

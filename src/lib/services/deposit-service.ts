@@ -5,7 +5,6 @@ import {
   NotFoundError,
   ValidationError,
   InsufficientBalanceError,
-  DepositError,
 } from '../utils/errors';
 import { AccountService } from './account-service';
 import { LedgerService } from './ledger-service';
@@ -17,7 +16,6 @@ import type {
   DepositStatus,
   DepositMethod,
   Role,
-  Currency,
   Journal,
 } from '@prisma/client';
 
@@ -50,8 +48,8 @@ const DEPOSIT_CONFIG = {
   DAILY_LIMIT: new Decimal(100000),
   MONTHLY_LIMIT: new Decimal(1000000),
   MAX_DESCRIPTION_LENGTH: 500,
-  DEFAULT_CURRENCY: 'USD' as Currency,
-  SUPPORTED_METHODS: ['BANK_TRANSFER', 'CASH', 'CHECK', 'MOBILE_MONEY', 'USSD', 'CARD'] as DepositMethod[],
+  DEFAULT_CURRENCY: 'USD' as string,
+  SUPPORTED_METHODS: ['ACH', 'WIRE', 'CARD', 'CASH', 'CHECK', 'MOBILE', 'CRYPTO'] as DepositMethod[],
   FEE_PERCENTAGE: new Decimal(0),
   FEE_MINIMUM: new Decimal(0),
   FEE_MAXIMUM: new Decimal(0),
@@ -61,7 +59,7 @@ export interface CreateDepositData {
   userId: string;
   accountId: string;
   amount: number | string | Decimal;
-  currency?: Currency;
+  currency?: string;
   method: DepositMethod;
   reference?: string;
   description?: string;
@@ -90,12 +88,95 @@ export interface DepositStats {
   totalAmount: number;
   byStatus: Record<DepositStatus, number>;
   byMethod: Record<DepositMethod, number>;
-  byCurrency: Record<Currency, number>;
+  byCurrency: Record<string, number>;
   averageAmount: number;
   pendingApproval: number;
 }
 
 export class DepositService {
+  static async getDepositById(id: string, actingUserId?: string): Promise<DepositResult> {
+    return this.getById(id, actingUserId);
+  }
+
+  static async listDeposits(
+    userId: string,
+    options: { page?: number; limit?: number; status?: DepositStatus } = {}
+  ): Promise<DepositListResult> {
+    return this.listByUser(userId, userId, options.page ?? 1, options.limit ?? 20, options.status);
+  }
+
+  static async listAllDeposits(
+    actingUserId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      status?: DepositStatus;
+      userId?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {}
+  ): Promise<DepositListResult> {
+    return this.listAll(
+      actingUserId,
+      options.page ?? 1,
+      options.limit ?? 20,
+      options.status,
+      undefined,
+      options.startDate,
+      options.endDate,
+      options.userId
+    );
+  }
+
+  static async updateDepositStatus(
+    id: string,
+    data: { status: DepositStatus; providerReference?: string; description?: string },
+    actingUserId: string
+  ): Promise<DepositResult> {
+    const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+    if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) {
+      throw new ForbiddenError('Only authorized personnel can update deposits');
+    }
+    const deposit = await prisma.deposit.findUnique({ where: { id } });
+    if (!deposit) throw new NotFoundError('Deposit', id);
+
+    const updated = await prisma.deposit.update({
+      where: { id },
+      data: {
+        status: data.status,
+        providerReference: data.providerReference ?? undefined,
+        metadata: {
+          ...(((deposit.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          ...(data.description !== undefined ? { description: data.description } : {}),
+          previousStatus: deposit.status,
+          statusUpdatedAt: new Date().toISOString(),
+          statusUpdatedById: actingUserId,
+        } as any,
+      },
+      include: {
+        user: { select: { id: true, email: true, firstName: true, lastName: true } },
+        account: {
+          select: { id: true, accountNumber: true, balance: true, availableBalance: true },
+        },
+        journal: true,
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: actingUserId,
+        action: 'UPDATE',
+        resourceType: 'DEPOSIT',
+        resourceId: id,
+        oldValues: { status: deposit.status },
+        newValues: { status: data.status },
+        status: 'SUCCESS',
+      },
+    });
+
+    return { deposit: updated };
+  }
+
   /**
    * Create a new deposit
    */
@@ -127,7 +208,7 @@ export class DepositService {
 
     // Validate amount using Decimal
     const amount = toDecimal(data.amount);
-    if (amount.lessThanOrEqual(new Decimal(0))) {
+    if (amount.lessThanOrEqualTo(new Decimal(0))) {
       throw new ValidationError('Amount must be positive');
     }
     if (amount.lessThan(DEPOSIT_CONFIG.MIN_DEPOSIT_AMOUNT)) {
@@ -159,7 +240,7 @@ export class DepositService {
       where: {
         userId: data.userId,
         createdAt: { gte: today },
-        status: { in: ['PENDING', 'COMPLETED', 'APPROVED'] as DepositStatus[] },
+        status: { in: ['PENDING', 'COMPLETED', 'PROCESSING'] as DepositStatus[] },
       },
       _sum: { amount: true },
     });
@@ -180,7 +261,7 @@ export class DepositService {
       where: {
         userId: data.userId,
         createdAt: { gte: thisMonth },
-        status: { in: ['PENDING', 'COMPLETED', 'APPROVED'] as DepositStatus[] },
+        status: { in: ['PENDING', 'COMPLETED', 'PROCESSING'] as DepositStatus[] },
       },
       _sum: { amount: true },
     });
@@ -215,14 +296,16 @@ export class DepositService {
           userId: data.userId,
           accountId: data.accountId,
           amount: amount,
-          fee: fee,
-          totalAmount: totalAmount,
           currency,
           method: data.method,
-          transactionReference: data.transactionReference || null,
-          description: data.description || null,
           status: 'COMPLETED' as DepositStatus,
-          metadata: data.metadata || null,
+          metadata: {
+            ...(data.metadata || {}),
+            fee: fee.toString(),
+            totalAmount: totalAmount.toString(),
+            transactionReference: data.transactionReference || null,
+            description: data.description || null,
+          } as any,
         },
         include: {
           user: {
@@ -296,7 +379,7 @@ export class DepositService {
             currency,
             method: data.method,
           },
-          metadata: data.metadata,
+          metadata: data.metadata as any,
           status: 'SUCCESS',
         },
       });
@@ -382,7 +465,7 @@ export class DepositService {
       }
     }
 
-    const where: Record<string, unknown> = { userId };
+    const where: any = { userId };
     if (status) where.status = status;
     if (method) where.method = method;
     if (startDate || endDate) {
@@ -431,7 +514,7 @@ export class DepositService {
       throw new ForbiddenError('Only authorized personnel can view all deposits');
     }
 
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (status) where.status = status;
     if (method) where.method = method;
     if (userId) where.userId = userId;
@@ -477,10 +560,12 @@ export class DepositService {
     // Group by status
     const byStatus: Record<DepositStatus, number> = {
       PENDING: 0,
+      PROCESSING: 0,
       COMPLETED: 0,
-      APPROVED: 0,
-      REJECTED: 0,
       FAILED: 0,
+      REVERSED: 0,
+      CANCELLED: 0,
+      HOLD: 0,
     };
 
     const statusCounts = await prisma.deposit.groupBy({
@@ -494,12 +579,13 @@ export class DepositService {
 
     // Group by method
     const byMethod: Record<DepositMethod, number> = {
-      BANK_TRANSFER: 0,
+      ACH: 0,
+      WIRE: 0,
+      CARD: 0,
       CASH: 0,
       CHECK: 0,
-      MOBILE_MONEY: 0,
-      USSD: 0,
-      CARD: 0,
+      MOBILE: 0,
+      CRYPTO: 0,
     };
 
     const methodCounts = await prisma.deposit.groupBy({
@@ -512,7 +598,7 @@ export class DepositService {
     }
 
     // Group by currency
-    const byCurrency: Record<Currency, number> = {
+    const byCurrency: Record<string, number> = {
       USD: 0,
       NGN: 0,
       EUR: 0,
@@ -525,12 +611,12 @@ export class DepositService {
     });
 
     for (const group of currencyCounts) {
-      byCurrency[group.currency as Currency] = group._count._all;
+      byCurrency[group.currency] = group._count._all;
     }
 
     // Calculate total amount using Decimal arithmetic
     const allDeposits = await prisma.deposit.findMany({
-      where: { status: { in: ['COMPLETED', 'APPROVED'] as DepositStatus[] } },
+      where: { status: { in: ['COMPLETED', 'PROCESSING'] as DepositStatus[] } },
       select: { amount: true, currency: true },
     });
 

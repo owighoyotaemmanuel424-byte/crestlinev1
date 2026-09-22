@@ -10,6 +10,10 @@ export interface RegisterData {
   firstName: string;
   lastName: string;
   phone?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  role?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface LoginData {
@@ -30,8 +34,29 @@ export interface SessionResult {
   user: User;
 }
 
+// In-memory password-reset tokens (the User model has no reset-token columns).
+const pendingPasswordResets = new Map<string, { userId: string; expires: Date }>();
+
 export class AuthService {
-  static async register(data: RegisterData): Promise<AuthResult> {
+  static async listUsers(
+    actingUserId: string,
+    options: { page?: number; limit?: number; role?: Role; status?: UserStatus; search?: string } = {}
+  ) {
+    return this.getAllUsers(
+      actingUserId,
+      options.page ?? 1,
+      options.limit ?? 20,
+      options.search,
+      options.role,
+      options.status
+    );
+  }
+
+  static async refreshToken(sessionToken: string) {
+    return this.refreshSession(sessionToken);
+  }
+
+  static async register(data: RegisterData, actingUserId?: string): Promise<AuthResult> {
     const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
     if (existingUser) {
       throw new ConflictError('Email already registered');
@@ -50,7 +75,7 @@ export class AuthService {
         firstName: data.firstName.trim(),
         lastName: data.lastName.trim(),
         phone: data.phone?.trim(),
-        role: 'CUSTOMER' as Role,
+        role: (data.role as Role | undefined) ?? ('CUSTOMER' as Role),
         status: 'ACTIVE' as UserStatus,
       },
     });
@@ -59,7 +84,7 @@ export class AuthService {
 
     await prisma.auditLog.create({
       data: {
-        actorId: user.id,
+        actorId: actingUserId ?? user.id,
         action: 'REGISTER',
         resourceType: 'USER',
         resourceId: user.id,
@@ -94,7 +119,7 @@ export class AuthService {
         action: 'LOGIN',
         resourceType: 'USER',
         resourceId: user.id,
-        metadata: { ipAddress: data.ipAddress, userAgent: data.userAgent },
+        metadata: { ipAddress: data.ipAddress ?? null, userAgent: data.userAgent ?? null },
         status: 'SUCCESS',
       },
     });
@@ -134,19 +159,19 @@ export class AuthService {
     return { session, token: sessionToken };
   }
 
-  static async validateSession(sessionToken: string): Promise<SessionResult> {
+  static async validateSession(sessionToken: string): Promise<SessionResult | null> {
     const session = await prisma.session.findUnique({
       where: { sessionToken },
       include: { user: true },
     });
 
     if (!session) {
-      throw new AuthError('Invalid session');
+      return null;
     }
 
     if (session.expires < new Date()) {
       await prisma.session.delete({ where: { sessionToken } });
-      throw new AuthError('Session expired');
+      return null;
     }
 
     return { session, user: session.user };
@@ -255,13 +280,9 @@ export class AuthService {
     const resetTokenExpires = new Date();
     resetTokenExpires.setHours(resetTokenExpires.getHours() + 1);
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        resetToken,
-        resetTokenExpires,
-      },
-    });
+    // User has no reset-token columns; keep tokens in-memory for this runtime
+    // until persistent reset-token storage is added to the schema.
+    pendingPasswordResets.set(resetToken, { userId: user.id, expires: resetTokenExpires });
 
     await prisma.auditLog.create({
       data: {
@@ -286,13 +307,15 @@ export class AuthService {
   }
 
   static async completePasswordReset(token: string, newPassword: string): Promise<void> {
-    const user = await prisma.user.findUnique({ where: { resetToken: token } });
-    if (!user) {
-      throw new AuthError('Invalid reset token');
+    const pending = pendingPasswordResets.get(token);
+    if (!pending || pending.expires < new Date()) {
+      pendingPasswordResets.delete(token);
+      throw new AuthError('Invalid or expired reset token');
     }
 
-    if (user.resetTokenExpires && user.resetTokenExpires < new Date()) {
-      throw new AuthError('Reset token expired');
+    const user = await prisma.user.findUnique({ where: { id: pending.userId } });
+    if (!user) {
+      throw new AuthError('Invalid reset token');
     }
 
     if (newPassword.length < 8) {
@@ -305,10 +328,10 @@ export class AuthService {
       where: { id: user.id },
       data: {
         password: hashedPassword,
-        resetToken: null,
-        resetTokenExpires: null,
       },
     });
+
+    pendingPasswordResets.delete(token);
 
     await prisma.auditLog.create({
       data: {
@@ -332,3 +355,13 @@ export class AuthService {
     });
   }
 }
+
+// Instance-style bindings: tests exercise the service as an instance while
+// the class API is static. Bind every static method onto the prototype.
+Object.getOwnPropertyNames(AuthService)
+  .filter((n) => n !== 'constructor' && n !== 'length' && n !== 'name' && n !== 'prototype' && typeof (AuthService as unknown as Record<string, unknown>)[n] === 'function')
+  .forEach((n) => {
+    (AuthService.prototype as unknown as Record<string, unknown>)[n] = function (this: unknown, ...args: unknown[]) {
+      return (AuthService as unknown as Record<string, (...a: unknown[]) => unknown>)[n](...args);
+    };
+  });

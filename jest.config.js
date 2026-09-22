@@ -20,6 +20,7 @@ module.exports = {
     '^@middleware/(.*)$': '<rootDir>/src/lib/middleware/$1',
     '^@utils/(.*)$': '<rootDir>/src/lib/utils/$1',
   },
+  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/tests/setup.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',

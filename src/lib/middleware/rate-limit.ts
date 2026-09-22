@@ -108,7 +108,7 @@ export const adminRateLimit = rateLimitMiddleware('admin');
  */
 export function cleanupRateLimits() {
   const now = Date.now();
-  for (const [key, record] of rateLimitStore.entries()) {
+  for (const [key, record] of Array.from(rateLimitStore.entries())) {
     if (now > record.resetTime) {
       rateLimitStore.delete(key);
     }

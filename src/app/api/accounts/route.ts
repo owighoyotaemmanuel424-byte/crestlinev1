@@ -36,7 +36,7 @@ const createAccountSchema = z.object({
   accountNumber: z.string().optional(),
   name: z.string().min(1),
   currency: z.string().length(3),
-  accountType: z.enum(['SAVINGS', 'CURRENT', 'LOAN', 'INVESTMENT', 'ESCROW']),
+  accountType: z.enum(['CHECKING', 'SAVINGS', 'CURRENT', 'LOAN', 'INVESTMENT', 'ESCROW', 'CREDIT']),
   initialBalance: zDecimal.optional().default(new Decimal(0)),
 });
 
@@ -46,12 +46,24 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validated = createAccountSchema.parse(body);
     
+    const ACCOUNT_TYPE_ALIASES: Record<
+      string,
+      'CHECKING' | 'SAVINGS' | 'LOAN' | 'INVESTMENT' | 'CREDIT'
+    > = {
+      CHECKING: 'CHECKING',
+      SAVINGS: 'SAVINGS',
+      CURRENT: 'CHECKING',
+      LOAN: 'LOAN',
+      INVESTMENT: 'INVESTMENT',
+      ESCROW: 'SAVINGS',
+      CREDIT: 'CREDIT',
+    };
     const result = await AccountService.createAccount({
       userId: user.id,
       accountNumber: validated.accountNumber,
       name: validated.name,
       currency: validated.currency,
-      accountType: validated.accountType,
+      accountType: ACCOUNT_TYPE_ALIASES[validated.accountType],
       openingBalance: validated.initialBalance,
     }, user.id);
     

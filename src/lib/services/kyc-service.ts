@@ -97,6 +97,60 @@ type DocumentStatusType = DocumentStatus;
 // ============================================
 
 export class KYCService {
+  static async getKYCProfile(userId: string, actingUserId?: string) {
+    return this.getProfileByUserId(userId, actingUserId);
+  }
+
+  static async getKYCProfileById(id: string, actingUserId?: string): Promise<KYCProfileResult> {
+    return this.getProfileById(id, actingUserId);
+  }
+
+  static async submitKYCDocument(data: SubmitDocumentData, actingUserId?: string) {
+    return this.submitDocument(data, actingUserId);
+  }
+
+  static async listKYCProfiles(
+    actingUserId: string,
+    page: number = 1,
+    limit: number = 20,
+    status?: string | null,
+    tier?: string | null,
+    search?: string | null
+  ) {
+    return this.getAllProfiles(
+      actingUserId,
+      page,
+      limit,
+      search ?? undefined,
+      status ? (status as KYCStatus) : undefined,
+      tier ? (tier as KYCTier) : undefined
+    );
+  }
+
+  static async updateKYCProfile(
+    id: string,
+    data: UpdateKYCProfileData,
+    actingUserId: string
+  ): Promise<KYCProfileResult> {
+    return this.updateProfile(id, data, actingUserId);
+  }
+
+  static async requestAdditionalInfo(
+    id: string,
+    actingUserId: string,
+    requestedDocuments?: string[],
+    notes?: string
+  ): Promise<KYCProfileResult> {
+    const documentNote = requestedDocuments?.length
+      ? `Requested documents: ${requestedDocuments.join(', ')}`
+      : undefined;
+    const combinedNotes = [notes, documentNote].filter(Boolean).join('\n') || undefined;
+    return this.updateProfile(
+      id,
+      { status: 'REQUESTED_CHANGES', notes: combinedNotes },
+      actingUserId
+    );
+  }
   static async createProfile(
     data: CreateKYCProfileData,
     actingUserId?: string
@@ -230,7 +284,7 @@ export class KYCService {
     if (data.status) {
       const validTransitions: Record<KYCStatusType, KYCStatusType[]> = {
         PENDING: ['PENDING', 'SUBMITTED', 'REJECTED'],
-        SUBMITTED: ['SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED'],
+        SUBMITTED: ['SUBMITTED', 'UNDER_REVIEW', 'REQUESTED_CHANGES', 'APPROVED', 'REJECTED'],
         UNDER_REVIEW: ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'REQUESTED_CHANGES'],
         REQUESTED_CHANGES: ['REQUESTED_CHANGES', 'SUBMITTED', 'REJECTED'],
         APPROVED: ['APPROVED', 'EXPIRED', 'SUSPENDED'],

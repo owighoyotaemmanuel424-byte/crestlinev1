@@ -20,13 +20,11 @@ export async function GET(
     const withdrawal = await prisma.withdrawal.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, email: true, firstName: true, lastName: true, kYCProfile: true } },
+        user: { select: { id: true, email: true, firstName: true, lastName: true, kycProfile: true } },
         account: { select: { id: true, accountNumber: true, name: true, balance: true, availableBalance: true } },
         reviewedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
         journal: { include: { entries: true } },
-        transaction: true,
         fraudAlerts: true,
-        auditLogs: { orderBy: { createdAt: 'desc' }, take: 20 },
       },
     });
 

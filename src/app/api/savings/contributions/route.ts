@@ -18,7 +18,7 @@ export async function GET(request: Request) {
       return success({ contributions: [] });
     }
     
-    const result = await SavingsService.listContributions(savingsGoalId, user.id, { page, limit });
+    const result = await SavingsService.listContributions(savingsGoalId, user.id, page, limit);
     return paginated(result.contributions, result.page, result.limit, result.total);
   });
 }
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validated = createContributionSchema.parse(body);
     
-    const result = await SavingsService.contributeToSavingsGoal({
+    const result = await SavingsService.contribute({
       savingsGoalId: validated.savingsGoalId,
       accountId: validated.accountId,
       amount: validated.amount,

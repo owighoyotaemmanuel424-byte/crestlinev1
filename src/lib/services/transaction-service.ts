@@ -37,7 +37,12 @@ export interface CreateTransactionData {
 }
 
 export interface TransactionResult {
-  transaction: Transaction & { account?: Partial<Account>; journal?: Journal; ledgerEntries?: LedgerEntry[] };
+  transaction: Transaction & {
+    account?: Partial<Account>;
+    journal?: Journal | null;
+    ledgerEntries?: LedgerEntry[];
+    fee?: unknown[];
+  };
 }
 
 export interface TransactionListResult {
@@ -49,6 +54,88 @@ export interface TransactionListResult {
 }
 
 export class TransactionService {
+  static async listAllTransactions(
+    actingUserId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      status?: TransactionStatus;
+      type?: TransactionType;
+      userId?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {}
+  ) {
+    const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+    if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role)) {
+      throw new ForbiddenError('Only authorized personnel can view all transactions');
+    }
+    const page = options.page ?? 1;
+    const limit = options.limit ?? 20;
+    const where: any = {};
+    if (options.status) where.status = options.status;
+    if (options.type) where.type = options.type;
+    if (options.userId) where.userId = options.userId;
+    if (options.startDate || options.endDate) {
+      where.createdAt = {};
+      if (options.startDate) where.createdAt.gte = options.startDate;
+      if (options.endDate) where.createdAt.lte = options.endDate;
+    }
+    const transactions = await prisma.transaction.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: { account: { select: { id: true, accountNumber: true } } },
+    });
+    const total = await prisma.transaction.count({ where });
+    return { transactions, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  static async updateTransaction(
+    id: string,
+    data: {
+      description?: string;
+      category?: string;
+      metadata?: Record<string, unknown>;
+      notes?: string;
+    },
+    actingUserId: string
+  ): Promise<TransactionResult> {
+    const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+    if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) {
+      throw new ForbiddenError('Only authorized personnel can update transactions');
+    }
+    const transaction = await prisma.transaction.findUnique({ where: { id } });
+    if (!transaction) throw new NotFoundError('Transaction', id);
+    const updated = await prisma.transaction.update({
+      where: { id },
+      data: {
+        description: data.description ?? undefined,
+        category: data.category ?? undefined,
+        metadata: {
+          ...(((transaction.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          ...(data.metadata ?? {}),
+          ...(data.notes ? { notes: data.notes } : {}),
+          statusUpdatedAt: new Date().toISOString(),
+          statusUpdatedById: actingUserId,
+        } as any,
+      },
+      include: { account: { select: { id: true, accountNumber: true, userId: true } } },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: actingUserId,
+        action: 'UPDATE',
+        resourceType: 'TRANSACTION',
+        resourceId: id,
+        oldValues: { description: transaction.description, category: transaction.category },
+        newValues: { description: data.description ?? null, category: data.category ?? null },
+        status: 'SUCCESS',
+      },
+    });
+    return { transaction: updated };
+  }
   static async createTransaction(data: CreateTransactionData, actingUserId?: string): Promise<TransactionResult> {
     const user = await prisma.user.findUnique({ where: { id: data.userId } });
     if (!user) throw new NotFoundError('User', data.userId);
@@ -59,12 +146,14 @@ export class TransactionService {
     
     // Validate amount using Decimal
     const amount = toDecimal(data.amount);
-    if (amount.lessThanOrEqual(new Decimal(0))) {
+    if (amount.lessThanOrEqualTo(new Decimal(0))) {
       throw new ValidationError('Amount must be positive');
     }
     
     if (data.idempotencyKey) {
-      const existing = await prisma.transaction.findUnique({ where: { idempotencyKey: data.idempotencyKey } });
+      const existing = await prisma.transaction.findFirst({
+        where: { metadata: { path: ['idempotencyKey'], equals: data.idempotencyKey } } as any,
+      });
       if (existing) return { transaction: existing };
     }
     const idempotencyKey = data.idempotencyKey || generateIdempotencyKey();
@@ -80,9 +169,8 @@ export class TransactionService {
           currency: data.currency || 'USD', 
           description: data.description, 
           category: data.category, 
-          metadata: data.metadata as any, 
+          metadata: { ...(data.metadata || {}), idempotencyKey } as any, 
           status: 'COMPLETED' as TransactionStatus, 
-          idempotencyKey 
         },
         include: { account: { select: { id: true, accountNumber: true, userId: true } } },
       });
@@ -128,7 +216,7 @@ export class TransactionService {
         account: { select: { id: true, accountNumber: true, userId: true } }, 
         journal: true, 
         ledgerEntries: true, 
-        fees: true 
+        fee: true 
       } 
     });
     if (!transaction) throw new NotFoundError('Transaction', id);
@@ -218,7 +306,7 @@ export class TransactionService {
         } 
       });
       await tx.journal.updateMany({ 
-        where: { transactionId: id }, 
+        where: { transaction: { id } }, 
         data: { status: 'REVERSED' as const } 
       });
       await tx.auditLog.create({ 
@@ -228,7 +316,7 @@ export class TransactionService {
           resourceType: 'TRANSACTION', 
           resourceId: transaction.id, 
           oldValues: { status: transaction.status }, 
-          newValues: { status: 'REVERSED', reason }, 
+          newValues: { status: 'REVERSED', reason: reason ?? null }, 
           status: 'SUCCESS' 
         } 
       });
@@ -274,3 +362,13 @@ export class TransactionService {
     return { total, byType: typeStats, byStatus: statusStats, totalAmount: totalAmountValue };
   }
 }
+
+// Instance-style bindings: tests exercise the service as an instance while
+// the class API is static. Bind every static method onto the prototype.
+Object.getOwnPropertyNames(TransactionService)
+  .filter((n) => n !== 'constructor' && n !== 'length' && n !== 'name' && n !== 'prototype' && typeof (TransactionService as unknown as Record<string, unknown>)[n] === 'function')
+  .forEach((n) => {
+    (TransactionService.prototype as unknown as Record<string, unknown>)[n] = function (this: unknown, ...args: unknown[]) {
+      return (TransactionService as unknown as Record<string, (...a: unknown[]) => unknown>)[n](...args);
+    };
+  });

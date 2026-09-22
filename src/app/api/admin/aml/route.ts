@@ -25,26 +25,22 @@ export async function GET(request: Request) {
         { user: { firstName: { contains: search, mode: 'insensitive' } } },
         { user: { lastName: { contains: search, mode: 'insensitive' } } },
         { user: { email: { contains: search, mode: 'insensitive' } } },
-        { riskIndicators: { has: search } },
       ];
     }
     if (status && status !== 'ALL') where.status = status;
     if (riskLevel) where.riskScore = { gte: parseInt(riskLevel) };
 
     const [amlCases, total] = await Promise.all([
-      prisma.aMLCase.findMany({
+      prisma.aMLCheck.findMany({
         where,
         skip,
         take: limitNum,
         orderBy: { createdAt: 'desc' },
         include: {
           user: { select: { id: true, email: true, firstName: true, lastName: true, status: true } },
-          transactions: { take: 10 },
-          reviewedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-          auditLogs: { orderBy: { createdAt: 'desc' }, take: 5 },
         },
       }),
-      prisma.aMLCase.count({ where }),
+      prisma.aMLCheck.count({ where }),
     ]);
 
     return NextResponse.json({

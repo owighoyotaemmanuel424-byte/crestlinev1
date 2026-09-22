@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       status,
       severity,
       alertType,
-      userId
+      userId ?? undefined
     );
     
     return paginated(result.alerts, result.page, result.limit, result.total);

@@ -83,6 +83,96 @@ export interface AMLStats {
 }
 
 export class AMLService {
+  static async listAMLCases(
+    actingUserId: string,
+    page: number = 1,
+    limit: number = 20,
+    status?: string | null,
+    severity?: string | null,
+    caseType?: string | null
+  ) {
+    const result = await this.listAll(
+      actingUserId,
+      page,
+      limit,
+      status ? (status as AMLStatus) : undefined,
+      severity ? (severity as RiskLevel) : undefined
+    );
+    return {
+      cases: result.checks,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      totalPages: result.totalPages,
+      caseType,
+    };
+  }
+
+  static async createAMLCase(
+    data: {
+      userId: string;
+      caseType?: string;
+      severity?: string;
+      description?: string;
+      relatedTransactionId?: string;
+      relatedResourceType?: string;
+      relatedResourceId?: string;
+      metadata?: Record<string, unknown>;
+    },
+    actingUserId: string
+  ) {
+    const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+    if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'COMPLIANCE'].includes(actingUser.role)) {
+      throw new ForbiddenError('Only compliance officers can create AML cases');
+    }
+    const user = await prisma.user.findUnique({ where: { id: data.userId } });
+    if (!user) throw new NotFoundError('User', data.userId);
+
+    const VALID_LEVELS: RiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+    const riskLevel = VALID_LEVELS.includes(data.severity as RiskLevel)
+      ? (data.severity as RiskLevel)
+      : 'MEDIUM';
+
+    const check = await prisma.aMLCheck.create({
+      data: {
+        reference: generateReference('AML'),
+        userId: data.userId,
+        amount: new Decimal(0),
+        riskScore:
+          riskLevel === 'CRITICAL' ? 90 : riskLevel === 'HIGH' ? 70 : riskLevel === 'MEDIUM' ? 40 : 10,
+        riskLevel,
+        status: 'PENDING',
+        requiresReview: true,
+        requiresApproval: riskLevel === 'HIGH' || riskLevel === 'CRITICAL',
+        reviewedById: actingUserId,
+        description: data.description ?? `AML case: ${data.caseType ?? 'OTHER'}`,
+        metadata: {
+          caseType: data.caseType ?? null,
+          relatedTransactionId: data.relatedTransactionId ?? null,
+          relatedResourceType: data.relatedResourceType ?? null,
+          relatedResourceId: data.relatedResourceId ?? null,
+          createdBy: actingUserId,
+          ...(data.metadata ?? {}),
+        } as any,
+      },
+      include: {
+        user: { select: { id: true, email: true, firstName: true, lastName: true } },
+      },
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: actingUserId,
+        action: 'CREATE',
+        resourceType: 'AML_CHECK',
+        resourceId: check.id,
+        newValues: { reference: check.reference, riskLevel, caseType: data.caseType ?? null },
+        status: 'SUCCESS',
+      },
+    });
+
+    return { case: check };
+  }
   /**
    * Perform AML check on a transaction or amount
    */

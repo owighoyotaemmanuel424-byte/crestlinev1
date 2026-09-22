@@ -50,17 +50,31 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validated = createWithdrawalSchema.parse(body);
     
+    const hasDestination = Boolean(
+      validated.destinationAccountId ||
+        validated.destinationAccountNumber ||
+        validated.destinationBank
+    );
+
     const result = await WithdrawalService.createWithdrawal({
       userId: user.id,
       accountId: validated.accountId,
       amount: validated.amount,
       currency: validated.currency,
-      destinationAccountId: validated.destinationAccountId,
-      destinationBank: validated.destinationBank,
-      destinationAccountNumber: validated.destinationAccountNumber,
-      description: validated.description,
-      idempotencyKey: validated.idempotencyKey,
-      metadata: validated.metadata,
+      method: hasDestination ? 'BANK_TRANSFER' : 'CASH',
+      destination:
+        validated.destinationAccountNumber ??
+        validated.destinationAccountId ??
+        validated.destinationBank ??
+        validated.description,
+      metadata: {
+        ...(validated.metadata ?? {}),
+        destinationAccountId: validated.destinationAccountId ?? null,
+        destinationBank: validated.destinationBank ?? null,
+        destinationAccountNumber: validated.destinationAccountNumber ?? null,
+        description: validated.description ?? null,
+        idempotencyKey: validated.idempotencyKey ?? null,
+      },
     }, user.id);
     
     return success(result);

@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       limit,
       role,
       status,
-      search,
+      search: search ?? undefined,
     });
     
     return paginated(result.users, result.page, result.limit, result.total);

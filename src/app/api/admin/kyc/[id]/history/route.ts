@@ -24,14 +24,15 @@ export async function GET(
       );
     }
 
-    const history = await prisma.kYCStatusHistory.findMany({
+    const history = await prisma.auditLog.findMany({
       where: {
-        kYCProfileId: id,
+        resourceType: 'KYC_PROFILE',
+        resourceId: id,
       },
       orderBy: { createdAt: 'desc' },
       take: 50,
       include: {
-        changedBy: {
+        actor: {
           select: {
             id: true,
             email: true,

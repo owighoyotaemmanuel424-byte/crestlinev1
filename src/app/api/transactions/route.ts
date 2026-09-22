@@ -63,12 +63,18 @@ export async function POST(request: Request) {
     const result = await TransactionService.createTransaction({
       userId: user.id,
       accountId: validated.accountId,
-      type: validated.type,
+      type:
+        validated.type === 'TRANSFER_IN' || validated.type === 'TRANSFER_OUT'
+          ? 'TRANSFER'
+          : validated.type,
       amount: validated.amount,
       currency: validated.currency,
       description: validated.description,
-      reference: validated.reference,
-      metadata: validated.metadata,
+      metadata: {
+        ...(validated.metadata ?? {}),
+        ...(validated.reference ? { reference: validated.reference } : {}),
+        ...(validated.type.startsWith('TRANSFER_') ? { direction: validated.type } : {}),
+      },
     }, user.id);
     
     return success(result);

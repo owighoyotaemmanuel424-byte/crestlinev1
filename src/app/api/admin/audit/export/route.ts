@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       {
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        actorId,
+        actorId: actorId ?? undefined,
         action,
         resourceType,
       },

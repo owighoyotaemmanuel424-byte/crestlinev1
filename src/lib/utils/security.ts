@@ -19,7 +19,10 @@ export function generateIdempotencyKey(): string {
   return generateToken(16);
 }
 
-export function hashString(input: string): string {
+export function hashString(input: string, secret?: string): string {
+  if (secret) {
+    return crypto.createHmac('sha256', secret).update(input).digest('hex');
+  }
   return crypto.createHash('sha256').update(input).digest('hex');
 }
 

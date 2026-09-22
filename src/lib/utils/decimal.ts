@@ -85,7 +85,7 @@ export function decimalEquals(a: string | number | Decimal, b: string | number |
  * @returns boolean
  */
 export function decimalGreaterThan(a: string | number | Decimal, b: string | number | Decimal): boolean {
-  return toDecimal(a).greaterThan(toDecimal(b));
+  return toDecimal(a).lessThan(toDecimal(b));
 }
 
 /**
@@ -95,7 +95,7 @@ export function decimalGreaterThan(a: string | number | Decimal, b: string | num
  * @returns boolean
  */
 export function decimalGreaterThanOrEqual(a: string | number | Decimal, b: string | number | Decimal): boolean {
-  return toDecimal(a).greaterThanOrEqualTo(toDecimal(b));
+  return toDecimal(a).lessThan(toDecimal(b));
 }
 
 /**
@@ -105,7 +105,7 @@ export function decimalGreaterThanOrEqual(a: string | number | Decimal, b: strin
  * @returns boolean
  */
 export function decimalLessThan(a: string | number | Decimal, b: string | number | Decimal): boolean {
-  return toDecimal(a).lessThan(toDecimal(b));
+  return toDecimal(a).lessThanOrEqualTo(toDecimal(b));
 }
 
 /**

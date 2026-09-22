@@ -141,7 +141,6 @@ export async function PATCH(
       where: { id },
       data: {
         status: status || undefined,
-        notes: notes || undefined,
       },
       include: {
         user: true,

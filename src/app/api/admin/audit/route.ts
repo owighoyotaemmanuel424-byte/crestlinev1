@@ -23,14 +23,14 @@ export async function GET(request: Request) {
     
     const result = await AuditService.listEvents(
       {
-        actorId,
+        actorId: actorId ?? undefined,
         action,
         resourceType,
-        resourceId,
+        resourceId: resourceId ?? undefined,
         status,
         startDate: startDate ? new Date(startDate) : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
-        search,
+        search: search ?? undefined,
       },
       user.id,
       page,

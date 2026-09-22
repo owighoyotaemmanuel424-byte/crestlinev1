@@ -53,9 +53,14 @@ export async function GET(
             cards: true,
           },
         },
-        kYCProfile: {
+        kycProfile: {
           include: {
             documents: true,
+          },
+        },
+        _count: {
+          select: {
+            transactions: true,
           },
         },
         kycDocuments: true,
@@ -115,7 +120,7 @@ export async function GET(
 
     // Calculate totals
     const totalBalance = customer.accounts?.reduce(
-      (sum, acc) => sum + (acc.balance || 0),
+      (sum, acc) => sum + acc.balance.toNumber(),
       0
     ) || 0;
 
@@ -182,11 +187,10 @@ export async function PATCH(
       where: { id },
       data: {
         status: status || undefined,
-        notes: notes || undefined,
       },
       include: {
         accounts: true,
-        kYCProfile: true,
+        kycProfile: true,
       },
     });
 

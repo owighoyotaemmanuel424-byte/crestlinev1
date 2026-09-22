@@ -24,16 +24,7 @@ export async function GET(
       );
     }
 
-    const loan = await prisma.loan.findUnique({
-      where: { id },
-      include: {
-        disbursementJournal: {
-          include: {
-            entries: true,
-          },
-        },
-      },
-    });
+    const loan = await prisma.loan.findUnique({ where: { id } });
 
     if (!loan) {
       return NextResponse.json(
@@ -42,7 +33,21 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ journal: loan.disbursementJournal });
+    const journals = await prisma.journal.findMany({
+      where: {
+        OR: [
+          { description: { contains: loan.reference } },
+          { description: { contains: loan.id } },
+        ],
+      },
+      include: {
+        entries: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+
+    return NextResponse.json({ journal: journals[0] ?? null });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to fetch loan journal' },

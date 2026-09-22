@@ -29,10 +29,15 @@ export async function GET(
     const pageNum = parseInt(page) || 1;
     const skip = (pageNum - 1) * limitNum;
 
-    // Fetch transactions for this card
+    // Fetch transactions for this card's account
+    const card = await prisma.card.findUnique({ where: { id } });
+    if (!card) {
+      return NextResponse.json({ error: 'Card not found' }, { status: 404 });
+    }
+
     const transactions = await prisma.transaction.findMany({
       where: {
-        cardId: id,
+        accountId: card.accountId,
       },
       skip,
       take: limitNum,
@@ -46,7 +51,7 @@ export async function GET(
 
     const total = await prisma.transaction.count({
       where: {
-        cardId: id,
+        accountId: card.accountId,
       },
     });
 

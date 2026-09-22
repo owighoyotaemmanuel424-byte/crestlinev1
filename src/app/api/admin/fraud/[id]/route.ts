@@ -20,13 +20,12 @@ export async function GET(
     const fraudAlert = await prisma.fraudAlert.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, email: true, firstName: true, lastName: true, kYCProfile: true } },
+        user: { select: { id: true, email: true, firstName: true, lastName: true, kycProfile: true } },
         transaction: { include: { user: true, account: true, journal: true } },
         transfer: { include: { fromUser: true, toUser: true, fromAccount: true, toAccount: true } },
         withdrawal: { include: { user: true, account: true } },
-        deposit: { include: { user: true, account: true } },
-        reviewedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
-        auditLogs: { orderBy: { createdAt: 'desc' }, take: 20 },
+        resolvedBy: { select: { id: true, email: true, firstName: true, lastName: true } },
+        assignedTo: { select: { id: true, email: true, firstName: true, lastName: true } },
       },
     });
 

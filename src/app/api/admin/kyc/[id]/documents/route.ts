@@ -26,18 +26,10 @@ export async function GET(
 
     const documents = await prisma.kYCDocument.findMany({
       where: {
-        kYCProfileId: id,
+        kycProfileId: id,
       },
       orderBy: { createdAt: 'desc' },
       include: {
-        uploadedBy: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
         reviewedBy: {
           select: {
             id: true,

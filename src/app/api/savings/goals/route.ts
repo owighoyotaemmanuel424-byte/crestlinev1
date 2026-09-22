@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const status = searchParams.get('status') as any;
     
-    const result = await SavingsService.listSavingsGoals(user.id, { page, limit, status });
+    const result = await SavingsService.listSavingsGoals(user.id, user.id, page, limit, status);
     return paginated(result.goals, result.page, result.limit, result.total);
   });
 }

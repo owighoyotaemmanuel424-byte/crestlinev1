@@ -67,7 +67,6 @@ export function formatError(error: unknown): ErrorResponse {
     return {
       error: 'ConflictError',
       message: error.message,
-      details: { resource: error.resourceType, id: error.resourceId },
     };
   }
   

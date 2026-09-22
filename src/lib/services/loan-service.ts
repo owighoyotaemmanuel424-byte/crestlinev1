@@ -116,6 +116,177 @@ export interface LoanStats {
 }
 
 export class LoanService {
+  static async getLoanById(id: string, actingUserId?: string): Promise<LoanResult> {
+    return this.getById(id, actingUserId);
+  }
+
+  static async listLoans(
+    userId: string,
+    actingUserId: string,
+    page: number = 1,
+    limit: number = 20,
+    status?: string | null
+  ): Promise<LoanListResult> {
+    return this.listByUser(userId, actingUserId, page, limit, status ?? undefined);
+  }
+
+  static async listAllLoans(
+    actingUserId: string,
+    page: number = 1,
+    limit: number = 20,
+    status?: string | null,
+    userId?: string | null
+  ): Promise<LoanListResult> {
+    return this.listAll(actingUserId, page, limit, status ?? undefined, undefined, userId ?? undefined);
+  }
+
+  static async approveLoan(
+    id: string,
+    data: {
+      approvedAmount?: number;
+      interestRate?: number;
+      term?: number;
+      notes?: string;
+      reviewedById?: string;
+    },
+    actingRole: string
+  ) {
+    if (!['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingRole)) {
+      throw new ForbiddenError('Only authorized personnel can approve loans');
+    }
+    const loan = await prisma.loan.findUnique({ where: { id } });
+    if (!loan) throw new NotFoundError('Loan', id);
+    const updated = await prisma.loan.update({
+      where: { id },
+      data: {
+        status: 'APPROVED',
+        ...(data.approvedAmount !== undefined ? { amount: new Decimal(data.approvedAmount) } : {}),
+        ...(data.interestRate !== undefined ? { interestRate: new Decimal(data.interestRate) } : {}),
+        ...(data.term !== undefined ? { durationDays: data.term * 30 } : {}),
+        metadata: {
+          ...(((loan.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          notes: data.notes ?? null,
+          reviewedById: data.reviewedById ?? null,
+          approvedAt: new Date().toISOString(),
+        } as any,
+      },
+      include: { user: true, account: true },
+    });
+    return { loan: updated };
+  }
+
+  static async rejectLoan(
+    id: string,
+    data: { rejectionReason?: string; notes?: string; reviewedById?: string },
+    actingRole: string
+  ) {
+    if (!['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingRole)) {
+      throw new ForbiddenError('Only authorized personnel can reject loans');
+    }
+    const loan = await prisma.loan.findUnique({ where: { id } });
+    if (!loan) throw new NotFoundError('Loan', id);
+    const updated = await prisma.loan.update({
+      where: { id },
+      data: {
+        status: 'REJECTED',
+        metadata: {
+          ...(((loan.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          rejectionReason: data.rejectionReason ?? null,
+          notes: data.notes ?? null,
+          reviewedById: data.reviewedById ?? null,
+          rejectedAt: new Date().toISOString(),
+        } as any,
+      },
+      include: { user: true, account: true },
+    });
+    return { loan: updated };
+  }
+
+  static async disburseLoan(
+    id: string,
+    data: { notes?: string; disbursedById?: string },
+    actingRole: string
+  ) {
+    if (!['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingRole)) {
+      throw new ForbiddenError('Only authorized personnel can disburse loans');
+    }
+    const loan = await prisma.loan.findUnique({ where: { id } });
+    if (!loan) throw new NotFoundError('Loan', id);
+    const updated = await prisma.loan.update({
+      where: { id },
+      data: {
+        status: 'ACTIVE',
+        metadata: {
+          ...(((loan.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          notes: data.notes ?? null,
+          disbursedById: data.disbursedById ?? null,
+          disbursedAt: new Date().toISOString(),
+        } as any,
+      },
+      include: { user: true, account: true },
+    });
+    return { loan: updated };
+  }
+
+  static async updateLoanStatus(
+    id: string,
+    status: string,
+    data: { notes?: string; reviewedById?: string },
+    actingRole: string
+  ) {
+    if (!['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingRole)) {
+      throw new ForbiddenError('Only authorized personnel can update loan status');
+    }
+    const loan = await prisma.loan.findUnique({ where: { id } });
+    if (!loan) throw new NotFoundError('Loan', id);
+    const updated = await prisma.loan.update({
+      where: { id },
+      data: {
+        status,
+        metadata: {
+          ...(((loan.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          notes: data.notes ?? null,
+          reviewedById: data.reviewedById ?? null,
+          statusUpdatedAt: new Date().toISOString(),
+        } as any,
+      },
+      include: { user: true, account: true },
+    });
+    return { loan: updated };
+  }
+
+  static async approveLoanApplication(
+    id: string,
+    data: {
+      approvedAmount?: number;
+      interestRate?: number;
+      termMonths?: number;
+      notes?: string;
+      approvedBy?: string;
+    },
+    actingUserId: string
+  ) {
+    const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+    if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) {
+      throw new ForbiddenError('Only authorized personnel can approve loan applications');
+    }
+    const application = await prisma.loanApplication.findUnique({ where: { id } });
+    if (!application) throw new NotFoundError('Loan Application', id);
+    const updated = await prisma.loanApplication.update({
+      where: { id },
+      data: {
+        status: 'APPROVED',
+        approvedAmount:
+          data.approvedAmount !== undefined ? new Decimal(data.approvedAmount) : undefined,
+        interestRate: data.interestRate !== undefined ? new Decimal(data.interestRate) : undefined,
+        termMonths: data.termMonths ?? undefined,
+        reviewNotes: data.notes ?? undefined,
+        reviewedById: data.approvedBy ?? actingUserId,
+        reviewedAt: new Date(),
+      },
+    });
+    return { application: updated };
+  }
   /**
    * Create a new loan
    */

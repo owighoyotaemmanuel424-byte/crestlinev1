@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       limit,
       status,
       type,
-      userId,
+      userId: userId ?? undefined,
       startDate: startDate ? new Date(startDate) : undefined,
       endDate: endDate ? new Date(endDate) : undefined,
     });

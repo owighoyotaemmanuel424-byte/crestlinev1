@@ -33,7 +33,7 @@ export const zDecimal = z.custom<Decimal>(
 ).transform((val) => {
   if (val instanceof Decimal) return val;
   if (typeof val === 'string') return new Decimal(val);
-  if (typeof val === 'number') return new Decimal(val.toString());
+  if (typeof val === 'number') return new Decimal(String(val));
   return val;
 });
 

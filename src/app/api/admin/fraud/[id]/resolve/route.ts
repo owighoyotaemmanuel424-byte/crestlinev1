@@ -30,7 +30,11 @@ export async function POST(
 
     const result = await FraudService.updateFraudAlertStatus(
       id,
-      { status: 'RESOLVED', reviewNotes: notes, resolvedById: session.user.id, resolution },
+      {
+        status: 'RESOLVED',
+        reviewNotes: [notes, resolution].filter(Boolean).join(' — ') || undefined,
+        reviewedById: session.user.id,
+      },
       session.user.role
     );
 

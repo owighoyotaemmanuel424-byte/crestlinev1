@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     const status = searchParams.get('status') as any;
     const userId = searchParams.get('userId');
     
-    const result = await AccountService.listAllAccounts(user.id, page, limit, status, userId);
+    const result = await AccountService.listAllAccounts(user.id, { page, limit, status, userId: userId ?? undefined });
     return paginated(result.accounts, result.page, result.limit, result.total);
   });
 }
