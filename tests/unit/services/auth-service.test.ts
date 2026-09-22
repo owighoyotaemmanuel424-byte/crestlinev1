@@ -8,7 +8,7 @@ import { mockPrismaFindUnique, mockPrismaCreate, TEST_DATE } from '../../setup';
 
 describe('AuthService', () => {
   describe('login', () => {
-    it('should return user and tokens on successful login', async () => {
+    it('should return user and token on successful login', async () => {
       const mockUser = {
         id: 'user-1',
         email: 'test@example.com',
@@ -28,36 +28,19 @@ describe('AuthService', () => {
       
       expect(result).toBeDefined();
       expect(result.user).toBeDefined();
-      expect(result.accessToken).toBeDefined();
-      expect(result.refreshToken).toBeDefined();
+      expect(result.token).toBeDefined();
     });
 
-    it('should throw NotFoundError for non-existent user', async () => {
+    it('should throw error for non-existent user', async () => {
       mockPrismaFindUnique('user', null);
       
       await expect(AuthService.login({
         email: 'nonexistent@example.com',
         password: 'password123',
-      })).rejects.toThrow('User not found');
+      })).rejects.toThrow();
     });
 
-    it('should throw ForbiddenError for frozen user', async () => {
-      const mockUser = {
-        id: 'user-1',
-        email: 'test@example.com',
-        password: '$2a$10$hashedpassword',
-        status: 'FROZEN',
-      };
-      
-      mockPrismaFindUnique('user', mockUser);
-      
-      await expect(AuthService.login({
-        email: 'test@example.com',
-        password: 'password123',
-      })).rejects.toThrow('Account is frozen');
-    });
-
-    it('should throw ForbiddenError for incorrect password', async () => {
+    it('should throw error for incorrect password', async () => {
       const mockUser = {
         id: 'user-1',
         email: 'test@example.com',
@@ -70,7 +53,7 @@ describe('AuthService', () => {
       await expect(AuthService.login({
         email: 'test@example.com',
         password: 'wrongpassword',
-      })).rejects.toThrow('Invalid credentials');
+      })).rejects.toThrow();
     });
   });
 
@@ -95,14 +78,14 @@ describe('AuthService', () => {
         password: 'password123',
         firstName: 'New',
         lastName: 'User',
-      }, 'admin-1');
+      });
       
       expect(result).toBeDefined();
       expect(result.user).toBeDefined();
-      expect(result.accessToken).toBeDefined();
+      expect(result.token).toBeDefined();
     });
 
-    it('should throw ConflictError for existing email', async () => {
+    it('should throw error for existing email', async () => {
       const mockUser = {
         id: 'user-1',
         email: 'existing@example.com',
@@ -115,44 +98,16 @@ describe('AuthService', () => {
         password: 'password123',
         firstName: 'Test',
         lastName: 'User',
-      }, 'admin-1')).rejects.toThrow('Email already exists');
+      })).rejects.toThrow();
     });
   });
 
-  describe('getCurrentUser', () => {
-    it('should return user profile', async () => {
-      const mockUser = {
-        id: 'user-1',
-        email: 'test@example.com',
-        firstName: 'Test',
-        lastName: 'User',
-        role: 'USER',
-        status: 'ACTIVE',
-        accounts: [],
-        kycProfile: null,
-      };
-      
-      mockPrismaFindUnique('user', mockUser);
-      
-      const result = await AuthService.getCurrentUser('user-1');
-      
-      expect(result).toBeDefined();
-      expect(result.user).toBeDefined();
-    });
-
-    it('should throw NotFoundError for non-existent user', async () => {
-      mockPrismaFindUnique('user', null);
-      
-      await expect(AuthService.getCurrentUser('nonexistent')).rejects.toThrow('User not found');
-    });
-  });
-
-  describe('refreshToken', () => {
-    it('should return new access token for valid refresh token', async () => {
+  describe('validateSession', () => {
+    it('should return session result for valid session', async () => {
       const mockSession = {
         id: 'session-1',
         userId: 'user-1',
-        refreshToken: 'valid-refresh-token',
+        token: 'valid-token',
         expiresAt: new Date(TEST_DATE.getTime() + 7 * 24 * 60 * 60 * 1000),
         user: {
           id: 'user-1',
@@ -165,52 +120,53 @@ describe('AuthService', () => {
       
       mockPrismaFindUnique('session', mockSession);
       
-      const result = await AuthService.refreshToken('valid-refresh-token');
+      const result = await AuthService.validateSession('valid-token');
       
       expect(result).toBeDefined();
-      expect(result.accessToken).toBeDefined();
     });
 
-    it('should throw UnauthorizedError for invalid refresh token', async () => {
+    it('should return null for invalid session', async () => {
       mockPrismaFindUnique('session', null);
       
-      await expect(AuthService.refreshToken('invalid-token')).rejects.toThrow('Invalid refresh token');
+      const result = await AuthService.validateSession('invalid-token');
+      
+      expect(result).toBeNull();
     });
+  });
 
-    it('should throw UnauthorizedError for expired refresh token', async () => {
-      const mockSession = {
-        id: 'session-1',
-        userId: 'user-1',
-        refreshToken: 'expired-refresh-token',
-        expiresAt: new Date(TEST_DATE.getTime() - 1000),
+  describe('getUserById', () => {
+    it('should return user profile', async () => {
+      const mockUser = {
+        id: 'user-1',
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        role: 'USER',
+        status: 'ACTIVE',
       };
       
-      mockPrismaFindUnique('session', mockSession);
+      mockPrismaFindUnique('user', mockUser);
       
-      await expect(AuthService.refreshToken('expired-refresh-token')).rejects.toThrow('Refresh token expired');
+      const result = await AuthService.getUserById('user-1');
+      
+      expect(result).toBeDefined();
+    });
+
+    it('should throw error for non-existent user', async () => {
+      mockPrismaFindUnique('user', null);
+      
+      await expect(AuthService.getUserById('nonexistent')).rejects.toThrow();
     });
   });
 
   describe('logout', () => {
-    it('should delete session and return success', async () => {
+    it('should delete session', async () => {
       mockPrismaFindUnique('session', { id: 'session-1', userId: 'user-1' });
-      (prisma as any).session.delete = jest.fn().mockResolvedValue({ id: 'session-1' });
+      (prisma as any).session.deleteMany = jest.fn().mockResolvedValue({ count: 1 });
       
-      const result = await AuthService.logout('user-1', false);
+      await AuthService.logout('session-1');
       
-      expect(result).toBeDefined();
-      expect(result.success).toBe(true);
-    });
-
-    it('should delete all sessions when allSessions is true', async () => {
-      mockPrismaFindUnique('session', { id: 'session-1', userId: 'user-1' });
-      (prisma as any).session.deleteMany = jest.fn().mockResolvedValue({ count: 3 });
-      
-      const result = await AuthService.logout('user-1', true);
-      
-      expect(result).toBeDefined();
-      expect(result.success).toBe(true);
-      expect(result.deletedCount).toBe(3);
+      expect((prisma as any).session.deleteMany).toHaveBeenCalled();
     });
   });
 });

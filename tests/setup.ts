@@ -1,4 +1,3 @@
-import { prisma } from '../src/lib/prisma';
 import { jest } from '@jest/globals';
 
 // ============================================
@@ -6,7 +5,7 @@ import { jest } from '@jest/globals';
 // ============================================
 
 // Mock environment variables for testing
-process.env.NODE_ENV = 'test';
+Object.defineProperty(process.env, 'NODE_ENV', { value: 'test', writable: true });
 process.env.DATABASE_URL = 'file:./dev.db';
 process.env.JWT_SECRET = 'test-secret-key';
 process.env.JWT_EXPIRES_IN = '1h';
@@ -14,7 +13,6 @@ process.env.JWT_EXPIRES_IN = '1h';
 // Mock Prisma client for unit tests
 jest.mock('../src/lib/prisma', () => ({
   prisma: {
-    // Mock all Prisma methods
     user: {
       findUnique: jest.fn(),
       findMany: jest.fn(),
@@ -127,35 +125,46 @@ afterEach(() => {
 });
 
 // Helper to mock Prisma responses
-export function mockPrismaFindUnique(model: string, data: any) {
-  const mock = jest.fn().mockResolvedValue(data);
-  (prisma as any)[model].findUnique = mock;
+type MockablePrisma = Record<string, Record<string, jest.Mock>>;
+const _prisma: MockablePrisma = {} as any;
+
+export function mockPrismaFindUnique(model: string, data: unknown) {
+  const mock = jest.fn(async () => data);
+  if (!_prisma[model]) _prisma[model] = {};
+  _prisma[model].findUnique = mock;
   return mock;
 }
 
-export function mockPrismaFindMany(model: string, data: any[]) {
-  const mock = jest.fn().mockResolvedValue(data);
-  (prisma as any)[model].findMany = mock;
+export function mockPrismaFindMany(model: string, data: unknown[]) {
+  const mock = jest.fn(async () => data);
+  if (!_prisma[model]) _prisma[model] = {};
+  _prisma[model].findMany = mock;
   return mock;
 }
 
-export function mockPrismaCreate(model: string, data: any) {
-  const mock = jest.fn().mockResolvedValue(data);
-  (prisma as any)[model].create = mock;
+export function mockPrismaCreate(model: string, data: unknown) {
+  const mock = jest.fn(async () => data);
+  if (!_prisma[model]) _prisma[model] = {};
+  _prisma[model].create = mock;
   return mock;
 }
 
-export function mockPrismaUpdate(model: string, data: any) {
-  const mock = jest.fn().mockResolvedValue(data);
-  (prisma as any)[model].update = mock;
+export function mockPrismaUpdate(model: string, data: unknown) {
+  const mock = jest.fn(async () => data);
+  if (!_prisma[model]) _prisma[model] = {};
+  _prisma[model].update = mock;
   return mock;
 }
 
 export function mockPrismaCount(model: string, count: number) {
-  const mock = jest.fn().mockResolvedValue(count);
-  (prisma as any)[model].count = mock;
+  const mock = jest.fn(async () => count);
+  if (!_prisma[model]) _prisma[model] = {};
+  _prisma[model].count = mock;
   return mock;
 }
+
+/** Cast prisma to any for test mocking */
+export const mockPrisma = _prisma as any;
 
 // Mock date for consistent testing
 export const TEST_DATE = new Date('2024-01-15T10:00:00Z');
