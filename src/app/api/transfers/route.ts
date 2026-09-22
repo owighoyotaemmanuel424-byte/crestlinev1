@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { Decimal } from '@prisma/client/runtime/library';
+import { prisma } from '@/lib/prisma';
 import { TransferService } from '@/lib/services/transfer-service';
 import { success, paginated } from '@/lib/middleware/response';
 import { handleRouteError } from '@/lib/middleware/error-handler';
@@ -49,7 +50,17 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validated = createTransferSchema.parse(body);
     
+    const [fromAccount, toAccount] = await Promise.all([
+      prisma.account.findUnique({ where: { id: validated.fromAccountId } }),
+      prisma.account.findUnique({ where: { id: validated.toAccountId } }),
+    ]);
+    if (!fromAccount || !toAccount) {
+      return NextResponse.json({ error: 'Transfer account not found' }, { status: 404 });
+    }
+
     const result = await TransferService.createTransfer({
+      fromUserId: fromAccount.userId,
+      toUserId: toAccount.userId,
       fromAccountId: validated.fromAccountId,
       toAccountId: validated.toAccountId,
       amount: validated.amount,

@@ -20,6 +20,10 @@ describe('AuthService', () => {
       };
       
       mockPrismaFindUnique('user', mockUser);
+
+      // bcrypt rejects the placeholder hash, so stub a successful comparison
+      const bcrypt = require('bcryptjs');
+      jest.spyOn(bcrypt, 'compare').mockResolvedValue(true);
       
       const result = await AuthService.login({
         email: 'test@example.com',

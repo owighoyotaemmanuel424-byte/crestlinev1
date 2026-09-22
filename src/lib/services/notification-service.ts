@@ -24,7 +24,7 @@ export class NotificationService {
         message: data.message,
         type: data.type || 'INFO',
         category: data.category || 'SYSTEM',
-        metadata: data.metadata,
+        metadata: data.metadata as any,
         isRead: false,
       },
       include: { user: { select: { id: true, email: true, firstName: true, lastName: true } } },
@@ -156,7 +156,7 @@ export class NotificationService {
     await prisma.auditLog.create({
       data: {
         actorId: userId,
-        action: 'READ_ALL',
+        action: 'UPDATE',
         resourceType: 'NOTIFICATION',
         resourceId: userId,
         status: 'SUCCESS',

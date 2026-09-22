@@ -18,6 +18,10 @@ jest.mock('../../../src/lib/prisma', () => ({
       create: jest.fn(),
       deleteMany: jest.fn(),
       findMany: jest.fn(),
+      findUnique: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
     },
   },
 }));
@@ -83,6 +87,7 @@ describe('AuthService', () => {
       const mockUser = {
         id: 'user-1',
         email: 'test@example.com',
+        status: 'ACTIVE',
         password: '$2a$10$hashedpassword',
       };
 
@@ -125,6 +130,7 @@ describe('AuthService', () => {
       const mockSession = {
         id: 'session-1',
         userId: 'user-1',
+        expires: new Date('2024-01-22T00:00:00.000Z'),
         user: {
           id: 'user-1',
           email: 'test@example.com',
@@ -132,7 +138,7 @@ describe('AuthService', () => {
         },
       };
 
-      mockPrisma.session.findMany.mockResolvedValue([mockSession]);
+      mockPrisma.session.findUnique.mockResolvedValue(mockSession);
 
       const result = await AuthService.validateSession('session-1');
 
@@ -140,7 +146,7 @@ describe('AuthService', () => {
     });
 
     it('should return null for invalid session', async () => {
-      mockPrisma.session.findMany.mockResolvedValue([]);
+      mockPrisma.session.findUnique.mockResolvedValue(null);
 
       const result = await AuthService.validateSession('invalid-session');
 

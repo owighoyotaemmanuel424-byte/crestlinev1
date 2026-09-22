@@ -24,9 +24,14 @@ export async function GET(
       );
     }
 
+    const loan = await prisma.loan.findUnique({ where: { id } });
+    if (!loan) {
+      return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
+    }
+
     const repayments = await prisma.loanRepayment.findMany({
       where: {
-        loanId: id,
+        accountId: loan.accountId,
       },
       orderBy: { dueDate: 'asc' },
       include: {

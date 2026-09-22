@@ -15,6 +15,7 @@ jest.mock('../../../src/lib/prisma', () => ({
       create: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
+      aggregate: jest.fn(),
     },
     account: {
       findUnique: jest.fn(),
@@ -23,11 +24,19 @@ jest.mock('../../../src/lib/prisma', () => ({
     },
     user: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
     },
     journal: {
       create: jest.fn(),
     },
     ledgerEntry: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
+    },
+    notification: {
       create: jest.fn(),
     },
     $transaction: jest.fn((callback: any) => callback({})),
@@ -45,7 +54,9 @@ describe('TransferService', () => {
     it('should create transfer between accounts with Decimal amounts', async () => {
       const senderAccount = {
         id: 'account-1',
+        accountNumber: 'ACC-001',
         balance: new Decimal('1000.00'),
+        availableBalance: new Decimal('1000.00'),
         currency: 'USD',
         userId: 'user-1',
         status: 'ACTIVE',
@@ -53,7 +64,9 @@ describe('TransferService', () => {
 
       const recipientAccount = {
         id: 'account-2',
+        accountNumber: 'ACC-002',
         balance: new Decimal('500.00'),
+        availableBalance: new Decimal('500.00'),
         currency: 'USD',
         userId: 'user-2',
         status: 'ACTIVE',
@@ -80,6 +93,12 @@ describe('TransferService', () => {
         });
       
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+      mockPrisma.account.findMany.mockResolvedValue([senderAccount, recipientAccount]);
+      mockPrisma.transfer.aggregate.mockResolvedValue({ _sum: { amount: null } });
+      mockPrisma.ledgerEntry.findMany.mockResolvedValue([
+        { accountId: 'account-1', entryType: 'DEBIT', amount: new Decimal('202.00'), account: senderAccount },
+        { accountId: 'account-2', entryType: 'CREDIT', amount: new Decimal('200.00'), account: recipientAccount },
+      ]);
       
       mockPrisma.$transaction.mockImplementation(async (callback: any) => {
         const result = await callback(mockPrisma);
@@ -122,7 +141,9 @@ describe('TransferService', () => {
     it('should reject transfer with insufficient funds', async () => {
       const senderAccount = {
         id: 'account-1',
+        accountNumber: 'ACC-001',
         balance: new Decimal('100.00'),
+        availableBalance: new Decimal('100.00'),
         currency: 'USD',
         userId: 'user-1',
         status: 'ACTIVE',
@@ -130,7 +151,9 @@ describe('TransferService', () => {
 
       const recipientAccount = {
         id: 'account-2',
+        accountNumber: 'ACC-002',
         balance: new Decimal('500.00'),
+        availableBalance: new Decimal('500.00'),
         currency: 'USD',
         userId: 'user-2',
         status: 'ACTIVE',

@@ -25,14 +25,15 @@ export async function GET(
     }
 
     // Fetch review history (status changes) for this withdrawal
-    const history = await prisma.withdrawalStatusHistory.findMany({
+    const history = await prisma.auditLog.findMany({
       where: {
-        withdrawalId: id,
+        resourceType: 'WITHDRAWAL',
+        resourceId: id,
       },
       orderBy: { createdAt: 'desc' },
       take: 50,
       include: {
-        changedBy: {
+        actor: {
           select: {
             id: true,
             email: true,

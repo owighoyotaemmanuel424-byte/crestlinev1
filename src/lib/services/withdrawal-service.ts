@@ -17,6 +17,7 @@ import type {
   Withdrawal,
   WithdrawalStatus,
   WithdrawalMethod,
+  RiskStatus,
   Role,
   Journal,
 } from '@prisma/client';
@@ -96,6 +97,114 @@ export interface WithdrawalStats {
 }
 
 export class WithdrawalService {
+  static async getWithdrawalById(id: string, actingUserId?: string): Promise<WithdrawalResult> {
+    return this.getById(id, actingUserId);
+  }
+
+  static async listWithdrawals(
+    userId: string,
+    options: { page?: number; limit?: number; status?: WithdrawalStatus } = {}
+  ): Promise<WithdrawalListResult> {
+    return this.listByUser(userId, userId, options.page ?? 1, options.limit ?? 20, options.status);
+  }
+
+  static async listAllWithdrawals(
+    actingUserId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      status?: WithdrawalStatus;
+      userId?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {}
+  ): Promise<WithdrawalListResult> {
+    return this.listAll(
+      actingUserId,
+      options.page ?? 1,
+      options.limit ?? 20,
+      options.status,
+      undefined,
+      options.startDate,
+      options.endDate,
+      options.userId
+    );
+  }
+
+  static async updateWithdrawalStatus(
+    id: string,
+    data: {
+      status: string;
+      riskStatus?: string;
+      reviewNotes?: string;
+      reviewedById?: string;
+      rejectionReason?: string;
+    },
+    actingRole: string
+  ): Promise<WithdrawalResult> {
+    if (!['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingRole)) {
+      throw new ForbiddenError('Only authorized personnel can update withdrawals');
+    }
+
+    const VALID_STATUSES: WithdrawalStatus[] = [
+      'PENDING',
+      'PROCESSING',
+      'COMPLETED',
+      'FAILED',
+      'REVERSED',
+      'CANCELLED',
+      'HOLD',
+      'APPROVED',
+      'REJECTED',
+    ];
+    const STATUS_ALIASES: Record<string, WithdrawalStatus> = {
+      ON_HOLD: 'HOLD',
+      UNDER_REVIEW: 'PROCESSING',
+    };
+    const status = STATUS_ALIASES[data.status] ?? (data.status as WithdrawalStatus);
+    if (!VALID_STATUSES.includes(status)) {
+      throw new ValidationError(`Invalid withdrawal status: ${data.status}`);
+    }
+
+    const VALID_RISK: RiskStatus[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+    let riskStatus: RiskStatus | undefined;
+    if (data.riskStatus) {
+      riskStatus = data.riskStatus as RiskStatus;
+      if (!VALID_RISK.includes(riskStatus)) {
+        throw new ValidationError(`Invalid risk status: ${data.riskStatus}`);
+      }
+    }
+
+    const withdrawal = await prisma.withdrawal.findUnique({ where: { id } });
+    if (!withdrawal) throw new NotFoundError('Withdrawal', id);
+
+    const updated = await prisma.withdrawal.update({
+      where: { id },
+      data: {
+        status,
+        riskStatus,
+        reviewNotes: data.reviewNotes ?? undefined,
+        reviewedById: data.reviewedById ?? undefined,
+        reviewedAt: data.reviewedById ? new Date() : undefined,
+        metadata: {
+          ...(((withdrawal.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          ...(data.rejectionReason ? { rejectionReason: data.rejectionReason } : {}),
+          statusUpdatedAt: new Date().toISOString(),
+        } as any,
+      },
+      include: {
+        user: {
+          select: { id: true, email: true, firstName: true, lastName: true },
+        },
+        account: {
+          select: { id: true, accountNumber: true, balance: true, availableBalance: true },
+        },
+        journal: true,
+      },
+    });
+
+    return { withdrawal: updated };
+  }
   /**
    * Create a new withdrawal
    */

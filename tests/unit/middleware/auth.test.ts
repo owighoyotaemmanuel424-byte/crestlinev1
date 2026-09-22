@@ -50,7 +50,8 @@ describe('Auth Middleware', () => {
 
       const response = await authMiddleware(request);
 
-      expect(response.status).toBeUndefined();
+      // Public routes pass through without requiring a token (no 401/403).
+      expect(response.status).toBe(200);
     });
   });
 

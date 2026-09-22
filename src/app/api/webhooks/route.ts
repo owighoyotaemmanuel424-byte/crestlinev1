@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { WebhookService } from '@/lib/services/webhook-service';
 import { success } from '@/lib/middleware/response';
 import { handleRouteError } from '@/lib/middleware/error-handler';
+import { getAuthUser } from '@/lib/middleware/auth';
 
 // ============================================
 // POST /api/webhooks
@@ -24,13 +25,13 @@ export async function POST(request: Request) {
       body = {};
     }
     
-    const result = await WebhookService.processWebhookEvent({
+    const result = await WebhookService.processWebhook({
       provider,
       eventType,
       payload: body,
       rawPayload: rawBody,
       signature,
-      timestamp,
+      timestamp: timestamp ?? undefined,
     });
     
     return success(result);
@@ -40,13 +41,21 @@ export async function POST(request: Request) {
 // GET /api/webhooks - List webhook events (admin only)
 export async function GET(request: Request) {
   return handleRouteError(request, { params: {} }, async () => {
+    const user = getAuthUser(request);
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
     const provider = searchParams.get('provider');
     const status = searchParams.get('status') as any;
     
-    const result = await WebhookService.listWebhookEvents(page, limit, provider, status);
+    const result = await WebhookService.listWebhookEvents(
+      user.id,
+      page,
+      limit,
+      provider ?? undefined,
+      undefined,
+      status
+    );
     return success(result);
   });
 }

@@ -110,6 +110,15 @@ jest.mock('../src/lib/prisma', () => ({
       delete: jest.fn(),
       count: jest.fn(),
     },
+    session: {
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+      deleteMany: jest.fn(),
+      count: jest.fn(),
+    },
     $transaction: jest.fn(),
     $queryRaw: jest.fn(),
   },
@@ -124,47 +133,55 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-// Helper to mock Prisma responses
-type MockablePrisma = Record<string, Record<string, jest.Mock>>;
-const _prisma: MockablePrisma = {} as any;
+// Helper to mock Prisma responses.
+// Writes must go through the SAME mock instance the services receive — i.e.
+// the factory registered above — so re-read it lazily on every helper call.
+type MockablePrisma = Record<string, Record<string, any>>;
+
+function getMockPrisma(): MockablePrisma {
+  return (jest.requireMock('../src/lib/prisma') as { prisma: MockablePrisma }).prisma;
+}
+
+function ensureModel(model: string): Record<string, any> {
+  const prisma = getMockPrisma();
+  if (!prisma[model]) prisma[model] = {};
+  return prisma[model];
+}
 
 export function mockPrismaFindUnique(model: string, data: unknown) {
   const mock = jest.fn(async () => data);
-  if (!_prisma[model]) _prisma[model] = {};
-  _prisma[model].findUnique = mock;
+  ensureModel(model).findUnique = mock;
   return mock;
 }
 
 export function mockPrismaFindMany(model: string, data: unknown[]) {
   const mock = jest.fn(async () => data);
-  if (!_prisma[model]) _prisma[model] = {};
-  _prisma[model].findMany = mock;
+  ensureModel(model).findMany = mock;
   return mock;
 }
 
 export function mockPrismaCreate(model: string, data: unknown) {
   const mock = jest.fn(async () => data);
-  if (!_prisma[model]) _prisma[model] = {};
-  _prisma[model].create = mock;
+  ensureModel(model).create = mock;
   return mock;
 }
 
 export function mockPrismaUpdate(model: string, data: unknown) {
   const mock = jest.fn(async () => data);
-  if (!_prisma[model]) _prisma[model] = {};
-  _prisma[model].update = mock;
+  ensureModel(model).update = mock;
   return mock;
 }
 
 export function mockPrismaCount(model: string, count: number) {
   const mock = jest.fn(async () => count);
-  if (!_prisma[model]) _prisma[model] = {};
-  _prisma[model].count = mock;
+  ensureModel(model).count = mock;
   return mock;
 }
 
-/** Cast prisma to any for test mocking */
-export const mockPrisma = _prisma as any;
+/** Proxy to the mocked prisma client for ad-hoc assertions in tests */
+export const mockPrisma: MockablePrisma = new Proxy({} as MockablePrisma, {
+  get: (_target, prop) => (getMockPrisma() as any)[prop as string],
+});
 
 // Mock date for consistent testing
 export const TEST_DATE = new Date('2024-01-15T10:00:00Z');

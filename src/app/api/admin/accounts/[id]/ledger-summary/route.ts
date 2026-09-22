@@ -38,20 +38,16 @@ export async function GET(
           },
         },
         transaction: true,
-        transfer: true,
-        deposit: true,
-        withdrawal: true,
-        loan: true,
       },
     });
 
     const totalDebits = ledgerEntries
       .filter(e => e.entryType === 'DEBIT')
-      .reduce((sum, e) => sum + (e.amount || 0), 0);
+      .reduce((sum, e) => sum + e.amount.toNumber(), 0);
 
     const totalCredits = ledgerEntries
       .filter(e => e.entryType === 'CREDIT')
-      .reduce((sum, e) => sum + (e.amount || 0), 0);
+      .reduce((sum, e) => sum + e.amount.toNumber(), 0);
 
     return NextResponse.json({
       ledgerEntries,

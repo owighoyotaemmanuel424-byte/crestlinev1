@@ -18,6 +18,7 @@ jest.mock('../../../src/lib/prisma', () => ({
     },
     account: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
     },
     user: {
@@ -29,6 +30,12 @@ jest.mock('../../../src/lib/prisma', () => ({
     ledgerEntry: {
       create: jest.fn(),
       findMany: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
+    },
+    notification: {
+      create: jest.fn(),
     },
     $transaction: jest.fn((callback: any) => callback({})),
   },
@@ -46,8 +53,10 @@ describe('TransactionService', () => {
       const mockAccount = {
         id: 'account-1',
         userId: 'user-1',
+        accountNumber: 'ACC-001',
         status: 'ACTIVE',
         balance: new Decimal('1000.00'),
+        availableBalance: new Decimal('1000.00'),
         currency: 'USD',
       };
 
@@ -65,6 +74,10 @@ describe('TransactionService', () => {
       };
 
       mockPrisma.account.findUnique.mockResolvedValue(mockAccount);
+      mockPrisma.account.findMany.mockResolvedValue([mockAccount]);
+      mockPrisma.ledgerEntry.findMany.mockResolvedValue([
+        { accountId: 'account-1', entryType: 'DEBIT', amount: new Decimal('100.00'), account: mockAccount },
+      ]);
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
       mockPrisma.$transaction.mockImplementation(async (callback: any) => {
         const result = await callback(mockPrisma);

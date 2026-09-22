@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const category = searchParams.get('category') as any;
     const priority = searchParams.get('priority') as any;
     
-    const result = await SupportService.listTickets(user.id, user.id, page, limit, status, category, priority);
+    const result = await SupportService.listUserTickets(user.id, user.id, page, limit, status, category, priority);
     return paginated(result.tickets, result.page, result.limit, result.total);
   });
 }
@@ -41,10 +41,21 @@ export async function POST(request: Request) {
     const body = await request.json();
     const validated = createTicketSchema.parse(body);
     
+    const SUPPORT_CATEGORY_ALIASES: Record<
+      string,
+      'GENERAL' | 'TECHNICAL' | 'ACCOUNT' | 'TRANSACTION' | 'SECURITY'
+    > = {
+      GENERAL: 'GENERAL',
+      TECHNICAL: 'TECHNICAL',
+      ACCOUNT: 'ACCOUNT',
+      TRANSACTION: 'TRANSACTION',
+      FRAUD: 'SECURITY',
+      COMPLAINT: 'GENERAL',
+    };
     const result = await SupportService.createTicket({
       userId: user.id,
       subject: validated.subject,
-      category: validated.category,
+      category: SUPPORT_CATEGORY_ALIASES[validated.category],
       priority: validated.priority,
       description: validated.description,
       attachments: validated.attachments,

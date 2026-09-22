@@ -25,6 +25,12 @@ jest.mock('../../../src/lib/prisma', () => ({
     journal: {
       create: jest.fn(),
     },
+    auditLog: {
+      create: jest.fn(),
+    },
+    notification: {
+      create: jest.fn(),
+    },
     $transaction: jest.fn((callback: any) => callback({})),
   },
 }));
@@ -86,12 +92,15 @@ describe('AccountService', () => {
     it('should return account by id', async () => {
       const mockAccount = {
         id: 'account-1',
+        userId: 'user-1',
         balance: new Decimal('1500.50'),
+        availableBalance: new Decimal('1500.50'),
         currency: 'USD',
         user: { id: 'user-1', firstName: 'John', lastName: 'Doe', email: 'john@test.com' },
       };
 
       mockPrisma.account.findUnique.mockResolvedValue(mockAccount);
+      mockPrisma.user.findUnique.mockResolvedValue({ id: 'admin-1', role: 'ADMIN' });
 
       await AccountService.getById('account-1', 'admin-1');
 
@@ -110,6 +119,7 @@ describe('AccountService', () => {
       const mockAccount = {
         id: 'account-1',
         balance: new Decimal('1000.00'),
+        availableBalance: new Decimal('1000.00'),
         currency: 'USD',
         status: 'ACTIVE',
         userId: 'user-1',
@@ -137,6 +147,7 @@ describe('AccountService', () => {
       const mockAccount = {
         id: 'account-1',
         balance: new Decimal('100.00'),
+        availableBalance: new Decimal('100.00'),
         currency: 'USD',
         status: 'ACTIVE',
         userId: 'user-1',

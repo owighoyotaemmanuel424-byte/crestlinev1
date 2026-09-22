@@ -16,6 +16,7 @@ import type {
   Account,
   Transfer,
   TransferStatus,
+  RiskStatus,
   Role,
   Journal,
 } from '@prisma/client';
@@ -90,7 +91,129 @@ export interface TransferStats {
 }
 
 export class TransferService {
+  static async getTransferById(id: string, actingUserId?: string): Promise<TransferResult> {
+    return this.getById(id, actingUserId);
+  }
+
+  static async listTransfers(
+    userId: string,
+    options: { page?: number; limit?: number; status?: TransferStatus } = {}
+  ): Promise<TransferListResult> {
+    return this.listByUser(userId, userId, options.page ?? 1, options.limit ?? 20, options.status);
+  }
+
+  static async listAllTransfers(
+    actingUserId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      status?: TransferStatus;
+      userId?: string;
+      startDate?: Date;
+      endDate?: Date;
+    } = {}
+  ): Promise<TransferListResult> {
+    return this.listAll(
+      actingUserId,
+      options.page ?? 1,
+      options.limit ?? 20,
+      options.status,
+      options.startDate,
+      options.endDate,
+      options.userId
+    );
+  }
+
+  static async updateTransferStatus(
+    id: string,
+    status: TransferStatus,
+    actingUserId: string,
+    description?: string
+  ): Promise<TransferResult> {
+    const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+    if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) {
+      throw new ForbiddenError('Only authorized personnel can update transfers');
+    }
+    const transfer = await prisma.transfer.findUnique({ where: { id } });
+    if (!transfer) throw new NotFoundError('Transfer', id);
+    const updated = await prisma.transfer.update({
+      where: { id },
+      data: {
+        status,
+        metadata: {
+          ...(((transfer.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          ...(description ? { description } : {}),
+          statusUpdatedAt: new Date().toISOString(),
+          statusUpdatedById: actingUserId,
+        } as any,
+      },
+      include: {
+        fromUser: { select: { id: true, email: true, firstName: true, lastName: true } },
+        toUser: { select: { id: true, email: true, firstName: true, lastName: true } },
+        fromAccount: {
+          select: { id: true, accountNumber: true, balance: true, availableBalance: true },
+        },
+        toAccount: {
+          select: { id: true, accountNumber: true, balance: true, availableBalance: true },
+        },
+        journal: true,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: actingUserId,
+        action: 'UPDATE',
+        resourceType: 'TRANSFER',
+        resourceId: id,
+        oldValues: { status: transfer.status },
+        newValues: { status },
+        status: 'SUCCESS',
+      },
+    });
+    return { transfer: updated };
+  }
+
+  static async updateTransferRiskStatus(
+    id: string,
+    riskStatus: RiskStatus,
+    actingUserId: string,
+    reviewNotes?: string
+  ): Promise<TransferResult> {
+    const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+    if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR', 'COMPLIANCE'].includes(actingUser.role)) {
+      throw new ForbiddenError('Only authorized personnel can update transfer risk status');
+    }
+    const transfer = await prisma.transfer.findUnique({ where: { id } });
+    if (!transfer) throw new NotFoundError('Transfer', id);
+    const updated = await prisma.transfer.update({
+      where: { id },
+      data: {
+        riskStatus,
+        metadata: {
+          ...(((transfer.metadata as unknown) as Record<string, unknown> | null) ?? {}),
+          ...(reviewNotes ? { reviewNotes } : {}),
+          riskStatusUpdatedAt: new Date().toISOString(),
+          riskStatusUpdatedById: actingUserId,
+        } as any,
+      },
+      include: {
+        fromUser: { select: { id: true, email: true, firstName: true, lastName: true } },
+        toUser: { select: { id: true, email: true, firstName: true, lastName: true } },
+        fromAccount: {
+          select: { id: true, accountNumber: true, balance: true, availableBalance: true },
+        },
+        toAccount: {
+          select: { id: true, accountNumber: true, balance: true, availableBalance: true },
+        },
+        journal: true,
+      },
+    });
+    return { transfer: updated };
+  }
   static async createTransfer(data: CreateTransferData, actingUserId?: string): Promise<TransferResult> {
+    if (data.fromAccountId === data.toAccountId) {
+      throw new ValidationError('Cannot transfer to the same account');
+    }
     const fromUser = await prisma.user.findUnique({ where: { id: data.fromUserId } });
     if (!fromUser) throw new NotFoundError('User (From)', data.fromUserId);
     const toUser = await prisma.user.findUnique({ where: { id: data.toUserId } });

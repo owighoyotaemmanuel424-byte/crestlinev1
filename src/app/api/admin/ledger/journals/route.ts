@@ -20,7 +20,7 @@ export async function GET(request: Request) {
       user.id,
       page,
       limit,
-      reference,
+      reference ?? undefined,
       status,
       startDate ? new Date(startDate) : undefined,
       endDate ? new Date(endDate) : undefined

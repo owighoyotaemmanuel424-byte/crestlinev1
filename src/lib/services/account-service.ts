@@ -1,6 +1,7 @@
 import { prisma } from '../prisma';
 import { generateReference } from '../utils/security';
 import {
+  ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
@@ -146,6 +147,16 @@ export class AccountService {
 
     // Generate account number if not provided
     const accountNumber = data.accountNumber || generateReference('ACC');
+
+    // Reject duplicates up front (accountNumber is unique in the schema)
+    if (data.accountNumber) {
+      const duplicate = await prisma.account.findUnique({
+        where: { accountNumber: data.accountNumber },
+      });
+      if (duplicate) {
+        throw new ConflictError('Account number already exists');
+      }
+    }
 
     // Create account
     const account = await prisma.account.create({
@@ -351,7 +362,8 @@ export class AccountService {
     id: string,
     status: AccountStatus,
     actingUserId: string,
-    reason?: string
+    reason?: string,
+    allowOwner: boolean = false
   ): Promise<AccountResult> {
     const account = await prisma.account.findUnique({
       where: { id },
@@ -360,9 +372,14 @@ export class AccountService {
 
     if (!account) throw new NotFoundError('Account', id);
 
-    const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
-    if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) {
-      throw new ForbiddenError('Only authorized personnel can update account status');
+    // Owners may only act on their own account, and only when the caller
+    // explicitly allows it (e.g. closing a zero-balance account).
+    const isOwner = account.userId === actingUserId;
+    if (!(allowOwner && isOwner)) {
+      const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+      if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) {
+        throw new ForbiddenError('Only authorized personnel can update account status');
+      }
     }
 
     if (account.status === status) {
@@ -516,6 +533,10 @@ export class AccountService {
     actingUserId: string,
     reason?: string
   ): Promise<AccountResult> {
+    const actor = await prisma.user.findUnique({ where: { id: actingUserId } });
+    if (!actor || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actor.role)) {
+      throw new ForbiddenError('Only operators or administrators can freeze accounts');
+    }
     return this.updateStatus(id, 'FROZEN' as AccountStatus, actingUserId, reason);
   }
 
@@ -545,15 +566,16 @@ export class AccountService {
 
     if (!account) throw new NotFoundError('Account', id);
 
-    // Check if balance is zero using Decimal comparison
+    // Only a zero-balance account may be closed
     const balance = toDecimal(account.balance);
-    if (balance.greaterThanOrEqualTo(new Decimal(0))) {
+    if (!balance.equals(new Decimal(0))) {
       throw new ValidationError(
-        `Cannot close account with balance of ${balance.toString()} ${account.currency}. Please withdraw funds first.`
+        `Cannot close account with non-zero balance of ${balance.toString()} ${account.currency}. Please withdraw funds first.`
       );
     }
 
-    return this.updateStatus(id, 'CLOSED' as AccountStatus, actingUserId, reason);
+    // Owners can close their own (now zero-balance) account; staff can close any.
+    return this.updateStatus(id, 'CLOSED' as AccountStatus, actingUserId, reason, true);
   }
 
   static async getAccountById(id: string, actingUserId: string) {

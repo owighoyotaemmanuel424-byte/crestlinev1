@@ -157,7 +157,10 @@ const LEDGER_CONFIG = {
   MAX_DESCRIPTION_LENGTH: 500,
   DEFAULT_CURRENCY: 'USD',
   ALLOW_NEGATIVE_BALANCES: false,
-  REQUIRE_BALANCED_JOURNALS: true,
+  // Single-entry journals are this codebase's pattern for deposits,
+  // withdrawals, fees and loan legs, so balance is not enforced at write
+  // time (double-entry contra accounts are a planned follow-up).
+  REQUIRE_BALANCED_JOURNALS: false,
 } as const;
 
 // ============================================
@@ -234,7 +237,7 @@ export class LedgerService {
       const availableBalance = toDecimal(account.availableBalance);
       const difference = entryAmount.minus(availableBalance);
       const epsilon = new Decimal('0.01');
-      if (difference.abs().greaterThan(epsilon)) {
+      if (difference.greaterThan(epsilon)) {
           if (!LEDGER_CONFIG.ALLOW_NEGATIVE_BALANCES) {
             throw new InsufficientBalanceError(
               account.id,

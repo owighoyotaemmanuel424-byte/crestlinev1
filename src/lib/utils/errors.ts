@@ -14,8 +14,13 @@ export class AppError extends Error {
 }
 
 export class NotFoundError extends AppError {
+  public readonly resourceType?: string;
+  public readonly resourceId?: string;
+
   constructor(resource: string, identifier?: string) {
     super(404, `${resource} not found${identifier ? ` with id: ${identifier}` : ''}`, 'NOT_FOUND');
+    this.resourceType = resource;
+    this.resourceId = identifier;
   }
 }
 
@@ -51,12 +56,19 @@ export class RateLimitError extends AppError {
 
 // Financial Errors
 export class InsufficientBalanceError extends AppError {
+  public readonly accountId: string;
+  public readonly requiredAmount: number;
+  public readonly availableBalance: number;
+
   constructor(accountId: string, required: number, available: number) {
     super(
       400,
       `Insufficient balance in account ${accountId}. Required: ${required}, Available: ${available}`,
       'INSUFFICIENT_BALANCE'
     );
+    this.accountId = accountId;
+    this.requiredAmount = required;
+    this.availableBalance = available;
   }
 }
 

@@ -37,6 +37,7 @@ jest.mock('../../src/lib/prisma', () => ({
       findMany: jest.fn(),
       create: jest.fn(),
       count: jest.fn(),
+      aggregate: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
@@ -47,6 +48,12 @@ jest.mock('../../src/lib/prisma', () => ({
     ledgerEntry: {
       create: jest.fn(),
       findMany: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
+    },
+    notification: {
+      create: jest.fn(),
     },
     $transaction: jest.fn((callback: any) => callback({})),
   },
@@ -65,13 +72,22 @@ describe('Financial Operations Integration', () => {
       const initialBalance = new Decimal('10000.00');
       const mockAccount = {
         id: 'account-1',
+        accountNumber: 'ACC-001',
         balance: initialBalance,
+        availableBalance: initialBalance,
+        status: 'ACTIVE',
         currency: 'USD',
         userId: 'user-1',
       };
 
       mockPrisma.account.findUnique.mockResolvedValue(mockAccount);
+      mockPrisma.account.findMany.mockResolvedValue([mockAccount]);
+      mockPrisma.deposit.aggregate.mockResolvedValue({ _sum: { amount: null } });
+      mockPrisma.ledgerEntry.findMany.mockResolvedValue([
+        { accountId: 'account-1', entryType: 'CREDIT', amount: new Decimal('500.00'), account: mockAccount },
+      ]);
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+      mockPrisma.$transaction.mockImplementation(async (callback: any) => callback(mockPrisma));
       mockPrisma.account.update.mockImplementation((args: any) => {
         return Promise.resolve({ ...mockAccount, balance: args.data.balance });
       });
@@ -114,7 +130,8 @@ describe('Financial Operations Integration', () => {
       const amount5 = new Decimal('50.30');
       const total = amount3.plus(amount4).plus(amount5);
 
-      expect(total.toString()).toBe('350.60');
+      // Decimal.toString() drops trailing zeros; toFixed(2) preserves them.
+      expect(total.toFixed(2)).toBe('350.60');
       expect(total).toBeInstanceOf(Decimal);
     });
   });

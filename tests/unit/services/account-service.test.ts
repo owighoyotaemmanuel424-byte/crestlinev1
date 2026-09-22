@@ -144,6 +144,8 @@ describe('AccountService', () => {
         userId: 'user-1',
         name: 'Old Name',
         status: 'ACTIVE',
+        balance: new Decimal(1000),
+        availableBalance: new Decimal(1000),
       };
       
       mockPrismaFindUnique('account', mockAccount);
@@ -174,10 +176,14 @@ describe('AccountService', () => {
       const mockAccount = {
         id: 'account-1',
         userId: 'user-1',
+        accountNumber: 'ACC-001',
         status: 'ACTIVE',
+        balance: new Decimal(1000),
+        availableBalance: new Decimal(1000),
       };
       
       mockPrismaFindUnique('account', mockAccount);
+      mockPrismaFindUnique('user', { id: 'admin-1', role: 'ADMIN' });
       mockPrismaUpdate('account', { ...mockAccount, status: 'FROZEN' });
       (prisma as any).auditLog.create = jest.fn().mockResolvedValue({});
       (prisma as any).notification.create = jest.fn().mockResolvedValue({});
@@ -205,10 +211,14 @@ describe('AccountService', () => {
       const mockAccount = {
         id: 'account-1',
         userId: 'user-1',
+        accountNumber: 'ACC-001',
         status: 'FROZEN',
+        balance: new Decimal(1000),
+        availableBalance: new Decimal(1000),
       };
       
       mockPrismaFindUnique('account', mockAccount);
+      mockPrismaFindUnique('user', { id: 'admin-1', role: 'ADMIN' });
       mockPrismaUpdate('account', { ...mockAccount, status: 'ACTIVE' });
       (prisma as any).auditLog.create = jest.fn().mockResolvedValue({});
       (prisma as any).notification.create = jest.fn().mockResolvedValue({});

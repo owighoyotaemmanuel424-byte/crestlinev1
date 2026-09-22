@@ -111,6 +111,55 @@ export interface InvestmentStats {
 }
 
 export class InvestmentService {
+  static async listPortfolios(
+    userId: string,
+    actingUserId: string,
+    page: number = 1,
+    limit: number = 20,
+    status?: string | null,
+    search?: string | null
+  ) {
+    if (actingUserId !== userId) {
+      const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+      if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) {
+        throw new ForbiddenError('You do not have access to these portfolios');
+      }
+    }
+    const where: any = { userId };
+    if (status) where.status = status;
+    if (search) where.name = { contains: search, mode: 'insensitive' };
+    const portfolios = await prisma.investmentPortfolio.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: { investments: true },
+    });
+    const total = await prisma.investmentPortfolio.count({ where });
+    return { portfolios, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  static async createPortfolio(
+    data: { userId: string; name: string; description?: string },
+    actingUserId?: string
+  ) {
+    if (actingUserId && actingUserId !== data.userId) {
+      const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+      if (!actingUser || !['ADMIN', 'SUPER_ADMIN'].includes(actingUser.role)) {
+        throw new ForbiddenError('You can only create your own portfolios');
+      }
+    }
+    const user = await prisma.user.findUnique({ where: { id: data.userId } });
+    if (!user) throw new NotFoundError('User', data.userId);
+    const portfolio = await prisma.investmentPortfolio.create({
+      data: {
+        userId: data.userId,
+        name: data.name,
+        description: data.description,
+      },
+    });
+    return { portfolio };
+  }
   /**
    * Create a new investment
    */

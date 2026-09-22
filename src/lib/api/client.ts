@@ -49,7 +49,7 @@ export class ApiClient {
     endpoint: string,
     data?: any,
     headers?: Record<string, string>,
-    token?: string
+    token?: string | null
   ): Promise<BackendResponse<T>> {
     const url = this.baseUrl + endpoint;
 
@@ -83,23 +83,23 @@ export class ApiClient {
     return await response.json();
   }
 
-  async get<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async get<T>(endpoint: string, token?: string | null, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('GET', endpoint, undefined, headers, token);
   }
 
-  async post<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async post<T>(endpoint: string, data?: any, token?: string | null, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('POST', endpoint, data, headers, token);
   }
 
-  async put<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async put<T>(endpoint: string, data?: any, token?: string | null, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('PUT', endpoint, data, headers, token);
   }
 
-  async patch<T>(endpoint: string, data?: any, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async patch<T>(endpoint: string, data?: any, token?: string | null, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('PATCH', endpoint, data, headers, token);
   }
 
-  async delete<T>(endpoint: string, token?: string, headers?: Record<string, string>): Promise<BackendResponse<T>> {
+  async delete<T>(endpoint: string, token?: string | null, headers?: Record<string, string>): Promise<BackendResponse<T>> {
     return this.request<T>('DELETE', endpoint, undefined, headers, token);
   }
 }

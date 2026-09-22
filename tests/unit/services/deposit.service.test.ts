@@ -15,9 +15,11 @@ jest.mock('../../../src/lib/prisma', () => ({
       create: jest.fn(),
       update: jest.fn(),
       count: jest.fn(),
+      aggregate: jest.fn(),
     },
     account: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       update: jest.fn(),
     },
     user: {
@@ -27,6 +29,13 @@ jest.mock('../../../src/lib/prisma', () => ({
       create: jest.fn(),
     },
     ledgerEntry: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+    },
+    auditLog: {
+      create: jest.fn(),
+    },
+    notification: {
       create: jest.fn(),
     },
     $transaction: jest.fn((callback: any) => callback({})),
@@ -44,9 +53,12 @@ describe('DepositService', () => {
     it('should create deposit with Decimal amount and update account balance', async () => {
       const mockAccount = {
         id: 'account-1',
+        accountNumber: 'ACC-001',
         balance: new Decimal('1000.00'),
+        availableBalance: new Decimal('1000.00'),
         currency: 'USD',
         userId: 'user-1',
+        status: 'ACTIVE',
       };
 
       const mockDeposit = {
@@ -63,7 +75,12 @@ describe('DepositService', () => {
       };
 
       mockPrisma.account.findUnique.mockResolvedValue(mockAccount);
+      mockPrisma.account.findMany.mockResolvedValue([mockAccount]);
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+      mockPrisma.deposit.aggregate.mockResolvedValue({ _sum: { amount: null } });
+      mockPrisma.ledgerEntry.findMany.mockResolvedValue([
+        { accountId: 'account-1', entryType: 'CREDIT', amount: new Decimal('500.00'), account: mockAccount },
+      ]);
       mockPrisma.$transaction.mockImplementation(async (callback: any) => {
         const result = await callback(mockPrisma);
         return result;

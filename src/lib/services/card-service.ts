@@ -25,7 +25,7 @@ function toDecimal(amount: number | string | Decimal): Decimal {
 
 export interface CreateCardData {
   userId: string;
-  accountId: string;
+  accountId?: string;
   cardType: CardType;
   cardBrand: CardBrand;
   expiryMonth: number;
@@ -39,11 +39,151 @@ export interface CardResult {
 }
 
 export class CardService {
+  static async listCards(
+    userId: string,
+    options: { page?: number; limit?: number; status?: CardStatus } = {}
+  ) {
+    const page = options.page ?? 1;
+    const limit = options.limit ?? 20;
+    const where: { userId: string; status?: CardStatus } = { userId };
+    if (options.status) where.status = options.status;
+    const cards = await prisma.card.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    });
+    const total = await prisma.card.count({ where });
+    return { cards, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  private static async assertCardAccess(id: string, actingUserId: string) {
+    const card = await prisma.card.findUnique({ where: { id } });
+    if (!card) throw new NotFoundError('Card', id);
+    if (actingUserId !== card.userId) {
+      const actingUser = await prisma.user.findUnique({ where: { id: actingUserId } });
+      if (!actingUser || !['ADMIN', 'SUPER_ADMIN', 'OPERATOR'].includes(actingUser.role)) {
+        throw new ForbiddenError('You do not have access to this card');
+      }
+    }
+    return card;
+  }
+
+  static async updateCard(
+    id: string,
+    data: { isDefault?: boolean; status?: string },
+    actingUserId: string
+  ) {
+    await this.assertCardAccess(id, actingUserId);
+    const VALID: CardStatus[] = [
+      'ACTIVE',
+      'INACTIVE',
+      'FROZEN',
+      'LOST',
+      'STOLEN',
+      'EXPIRED',
+      'CANCELLED',
+    ];
+    let status: CardStatus | undefined;
+    if (data.status) {
+      status = (data.status === 'REVOKED' ? 'CANCELLED' : data.status) as CardStatus;
+      if (!VALID.includes(status)) {
+        throw new ValidationError(`Invalid card status: ${data.status}`);
+      }
+    }
+    const card = await prisma.card.update({
+      where: { id },
+      data: {
+        status,
+        isDefault: data.isDefault,
+      },
+    });
+    return { card };
+  }
+
+  static async deleteCard(id: string, actingUserId: string) {
+    await this.assertCardAccess(id, actingUserId);
+    const card = await prisma.card.update({
+      where: { id },
+      data: { status: 'CANCELLED' as CardStatus },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: actingUserId,
+        action: 'DELETE',
+        resourceType: 'CARD',
+        resourceId: id,
+        oldValues: { status: 'ACTIVE' },
+        newValues: { status: 'CANCELLED' },
+        status: 'SUCCESS',
+      },
+    });
+    return { card };
+  }
+
+  static async cancelCard(id: string, actingUserId: string, reason?: string) {
+    await this.assertCardAccess(id, actingUserId);
+    const existing = await prisma.card.findUnique({ where: { id }, select: { status: true } });
+    const card = await prisma.card.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED' as CardStatus,
+        metadata: { cancelledReason: reason ?? null, cancelledAt: new Date().toISOString() } as any,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: actingUserId,
+        action: 'CANCEL',
+        resourceType: 'CARD',
+        resourceId: id,
+        oldValues: { status: existing?.status ?? 'ACTIVE' },
+        newValues: { status: 'CANCELLED', reason: reason ?? null },
+        status: 'SUCCESS',
+      },
+    });
+    return { card };
+  }
+
+  static async reportCard(id: string, actingUserId: string, reason?: string) {
+    await this.assertCardAccess(id, actingUserId);
+    const lost = /lost/i.test(reason ?? '');
+    const newStatus: CardStatus = lost ? 'LOST' : 'STOLEN';
+    const existing = await prisma.card.findUnique({ where: { id }, select: { status: true } });
+    const card = await prisma.card.update({
+      where: { id },
+      data: {
+        status: newStatus,
+        metadata: { reportReason: reason ?? null, reportedAt: new Date().toISOString() } as any,
+      },
+    });
+    await prisma.auditLog.create({
+      data: {
+        actorId: actingUserId,
+        action: 'REPORT',
+        resourceType: 'CARD',
+        resourceId: id,
+        oldValues: { status: existing?.status ?? 'ACTIVE' },
+        newValues: { status: newStatus, reason: reason ?? null },
+        status: 'SUCCESS',
+      },
+    });
+    return { card };
+  }
   static async createCard(data: CreateCardData, actingUserId?: string): Promise<CardResult> {
     const user = await prisma.user.findUnique({ where: { id: data.userId } });
     if (!user) throw new NotFoundError('User', data.userId);
-    const account = await prisma.account.findUnique({ where: { id: data.accountId } });
-    if (!account) throw new NotFoundError('Account', data.accountId);
+    let accountId = data.accountId;
+    if (!accountId) {
+      const defaultAccount = await prisma.account.findFirst({
+        where: { userId: data.userId, status: 'ACTIVE' },
+        orderBy: { createdAt: 'asc' },
+      });
+      accountId = defaultAccount?.id;
+    }
+    if (!accountId) throw new NotFoundError('Account', data.userId);
+    const account = await prisma.account.findUnique({ where: { id: accountId } });
+    if (!account) throw new NotFoundError('Account', accountId);
     if (account.userId !== data.userId) throw new ForbiddenError('Account does not belong to user');
     
     const cardNumber = generateReference('CARD');
@@ -55,7 +195,7 @@ export class CardService {
     const card = await prisma.card.create({
       data: {
         userId: data.userId,
-        accountId: data.accountId,
+        accountId,
         cardNumber,
         maskedCardNumber: '***' + cardNumber.slice(-4),
         cardType: data.cardType,
@@ -102,7 +242,7 @@ export class CardService {
     return { cards, total: cards.length };
   }
 
-  static async freezeCard(id: string, actingUserId: string): Promise<CardResult> {
+  static async freezeCard(id: string, actingUserId: string, reason?: string): Promise<CardResult> {
     const card = await prisma.card.findUnique({ where: { id } });
     if (!card) throw new NotFoundError('Card', id);
     if (card.status === 'FROZEN') throw new CardFrozenError(card.id);
@@ -124,7 +264,7 @@ export class CardService {
     return { card: frozenCard };
   }
 
-  static async unfreezeCard(id: string, actingUserId: string): Promise<CardResult> {
+  static async unfreezeCard(id: string, actingUserId: string, reason?: string): Promise<CardResult> {
     const card = await prisma.card.findUnique({ where: { id } });
     if (!card) throw new NotFoundError('Card', id);
     if (card.status !== 'FROZEN') throw new ValidationError('Card is not frozen');
