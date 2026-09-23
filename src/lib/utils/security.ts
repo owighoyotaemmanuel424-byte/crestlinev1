@@ -67,27 +67,59 @@ export function getJwtSecret(): string {
 }
 
 /**
+ * Dedicated signing secret for privileged console sessions.
+ *
+ * Operators sign in against this secret when ADMIN_SESSION_SECRET is set, so a
+ * customer credential can never be replayed as an operator one. Falls back to
+ * the shared JWT secret when it is not configured.
+ */
+export function getConsoleSecret(): string {
+  return process.env.ADMIN_SESSION_SECRET?.trim() || getJwtSecret();
+}
+
+/**
+ * Every secret a bearer token may legitimately be signed with. Both are always
+ * accepted so a console session stays valid if the dedicated secret is added
+ * or removed between deployments.
+ */
+function acceptedSecrets(): string[] {
+  const secrets = [getJwtSecret()];
+  const consoleSecret = process.env.ADMIN_SESSION_SECRET?.trim();
+  if (consoleSecret && !secrets.includes(consoleSecret)) {
+    secrets.push(consoleSecret);
+  }
+  return secrets;
+}
+
+/**
  * Issue the bearer token consumed by the API middleware. `sub` is what the
  * middleware forwards as the authenticated user id.
  */
-export function signAuthToken(payload: {
-  userId: string;
-  role: string;
-  email?: string;
-}): string {
+export function signAuthToken(
+  payload: {
+    userId: string;
+    role: string;
+    email?: string;
+  },
+  secret: string = getJwtSecret()
+): string {
   return jwt.sign(
     { sub: payload.userId, userId: payload.userId, role: payload.role, email: payload.email },
-    getJwtSecret(),
+    secret,
     { expiresIn: '7d' }
   );
 }
 
 export function verifyToken(token: string): AuthTokenPayload {
-  try {
-    return jwt.verify(token, getJwtSecret()) as AuthTokenPayload;
-  } catch {
-    throw new Error('Invalid token');
+  for (const secret of acceptedSecrets()) {
+    try {
+      return jwt.verify(token, secret) as AuthTokenPayload;
+    } catch {
+      // Try the next configured secret before rejecting the token.
+    }
   }
+
+  throw new Error('Invalid token');
 }
 
 export function verifyHash(payload: string, signature: string, secret: string = getJwtSecret()): boolean {

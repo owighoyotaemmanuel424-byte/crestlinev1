@@ -17,6 +17,7 @@ export async function authMiddleware(request: NextRequest) {
   // Skip authentication for public endpoints
   const publicRoutes = [
     '/api/auth/login',
+    '/api/auth/admin/login',
     '/api/auth/refresh',
     '/api/health',
     '/api/webhooks',

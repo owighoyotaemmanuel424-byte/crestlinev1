@@ -287,6 +287,19 @@ async function main() {
       emailVerified: true,
       phoneVerified: true,
     },
+    {
+      // Operator account for the internal console. It is seeded with the same
+      // demo credential as the other staff accounts; rotate it in any real
+      // environment with `pnpm db:ensure-admin` + ADMIN_DEFAULT_PASSWORD.
+      email: 'owighoyotaemmanuel424@gmail.com',
+      password,
+      firstName: 'Emmanuel',
+      lastName: 'Owig Hoyota',
+      status: UserStatus.ACTIVE,
+      role: Role.ADMIN,
+      emailVerified: true,
+      phoneVerified: true,
+    },
   ];
 
   const createdUsers = await Promise.all(
@@ -849,6 +862,7 @@ async function main() {
   console.log('   - Compliance: compliance@crestline.capital / Compliance@123');
   console.log('   - Support: support@crestline.capital / Demo@123456');
   console.log('   - Operator: operator@crestline.capital / Demo@123456');
+  console.log('   - Console admin: owighoyotaemmanuel424@gmail.com / Demo@123456');
 }
 
 main()
