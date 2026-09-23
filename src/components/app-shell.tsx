@@ -123,7 +123,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const isAuthRoute = AUTH_ROUTES.includes(pathname);
   const isMarketing = MARKETING_ROUTES.includes(pathname);
-  const isWorkspace = !isAuthRoute && !isMarketing;
+  // Admin routes render their own privileged chrome and enforce their own
+  // session rules, so the customer shell stays out of the way entirely.
+  const isAdminRoute = pathname === '/admin' || pathname.startsWith('/admin/');
+  const isWorkspace = !isAuthRoute && !isMarketing && !isAdminRoute;
 
   // Load the signed-in identity whenever the route changes.
   useEffect(() => {
@@ -236,7 +239,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.replace('/login');
   }, [router]);
 
-  if (isAuthRoute) {
+  if (isAuthRoute || isAdminRoute) {
     return <>{children}</>;
   }
 

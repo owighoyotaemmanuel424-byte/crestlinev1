@@ -1,8 +1,10 @@
-import NextAuth from 'next-auth';
+import { getServerSession, type AuthOptions } from 'next-auth';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
+import { headers } from 'next/headers';
 import { prisma } from './prisma';
+import { verifyToken } from './utils/security';
 import { AuthError, NotFoundError } from './utils/errors';
 import type { User } from '@prisma/client';
 
@@ -120,7 +122,7 @@ export async function validateUser(email: string, password: string): Promise<Use
 }
 
 // NextAuth configuration
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const authOptions: AuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
   session: {
     strategy: 'jwt',
@@ -230,7 +232,110 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
-});
+};
+
+// ============================================
+// SESSION RESOLUTION
+// ============================================
+
+/**
+ * Load the acting user for a resolved identity.
+ *
+ * Privileges always come from the database, never from the token or cookie, so
+ * a stale credential can never keep a revoked role alive.
+ */
+async function loadSessionUser(userId: string): Promise<AuthSession | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      status: true,
+      emailVerified: true,
+      phoneVerified: true,
+    },
+  });
+
+  if (!user || user.status !== 'ACTIVE') {
+    return null;
+  }
+
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      role: user.role,
+      status: user.status,
+      emailVerified: Boolean(user.emailVerified),
+      phoneVerified: Boolean(user.phoneVerified),
+      avatarUrl: null,
+    },
+  };
+}
+
+/**
+ * Resolve a session from the bearer token our API clients send.
+ *
+ * The edge middleware verifies the token before the request reaches a route
+ * and forwards `x-user-id`; server components and routes called outside the
+ * middleware chain (or straight from a test) are handled by verifying the
+ * Authorization header here.
+ */
+async function tokenSession(): Promise<AuthSession | null> {
+  let forwardedUserId: string | null = null;
+  let authorization: string | null = null;
+
+  try {
+    const requestHeaders = headers();
+    forwardedUserId = requestHeaders.get('x-user-id');
+    authorization = requestHeaders.get('authorization');
+  } catch {
+    // Outside a request scope (build-time prerender, scripts).
+    return null;
+  }
+
+  if (authorization?.startsWith('Bearer ')) {
+    try {
+      const payload = verifyToken(authorization.slice(7));
+      if (payload?.sub) {
+        return loadSessionUser(payload.sub);
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  if (forwardedUserId) {
+    return loadSessionUser(forwardedUserId);
+  }
+
+  return null;
+}
+
+/**
+ * Current session for server routes and components.
+ *
+ * next-auth only exposes `getServerSession` in v4 (and no next-auth route
+ * handler is mounted), so cookie sessions are consulted opportunistically and
+ * the bearer token used by the customer app and the operations console is the
+ * primary credential.
+ */
+export async function auth(): Promise<AuthSession | null> {
+  const secret = process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET;
+
+  if (secret) {
+    const session = await getServerSession({ ...authOptions, secret }).catch(() => null);
+    if (session?.user?.id) {
+      return session as AuthSession;
+    }
+  }
+
+  return tokenSession();
+}
 
 // Get current user from session
 export async function getCurrentUser() {

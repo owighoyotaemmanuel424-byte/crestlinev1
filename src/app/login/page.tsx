@@ -144,6 +144,13 @@ function LoginForm() {
         this environment is a demonstration build. Never enter real banking
         credentials or card numbers.
       </p>
+
+      <p className="mt-4 text-center text-xs text-muted-foreground">
+        Crestline staff?{" "}
+        <Link href="/admin/login" className="font-semibold text-primary hover:underline">
+          Sign in to the operations console
+        </Link>
+      </p>
     </AuthLayout>
   );
 }
