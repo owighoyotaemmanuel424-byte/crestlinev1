@@ -8,10 +8,11 @@
  *
  * Credentials come from the environment so rotating them never needs a code
  * change:
- *   ADMIN_DEFAULT_EMAIL / ADMIN_DEFAULT_PASSWORD / ADMIN_DEFAULT_NAME
+ *   ADMIN_DEFAULT_PASSWORD (required) / ADMIN_DEFAULT_EMAIL / ADMIN_DEFAULT_NAME
  * The legacy ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_FIRST_NAME / ADMIN_LAST_NAME
- * names are still honoured. The defaults below are the operator credentials
- * this build ships with.
+ * names are still honoured. Only the email and display name have defaults —
+ * the password must always be supplied, because a credential committed to the
+ * repository is readable by anyone who can read the repository.
  */
 import { PrismaClient, Role, UserStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
@@ -30,6 +31,13 @@ async function main() {
   const password = legacyPassword || config.password;
   const firstName = legacyFirst || config.firstName;
   const lastName = legacyLast || config.lastName;
+
+  if (!password) {
+    throw new Error(
+      'No console password configured. Set ADMIN_DEFAULT_PASSWORD to at least 8 characters ' +
+        'in the environment before provisioning — credentials are never read from source.'
+    );
+  }
 
   if (password.length < 8) {
     throw new Error('The console password must be at least 8 characters long.');

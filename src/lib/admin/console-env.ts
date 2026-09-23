@@ -11,8 +11,6 @@ import { timingSafeEqual } from 'crypto';
 
 const FALLBACK_EMAIL = 'owighoyotaemmanuel424@gmail.com';
 const FALLBACK_NAME = 'Crestline Administrator';
-// Split so secret scanners do not trip on a literal credential in the repo.
-const FALLBACK_PASSWORD = 'Owighoyota' + '12345';
 
 function read(name: string): string | null {
   const value = process.env[name]?.trim();
@@ -22,8 +20,14 @@ function read(name: string): string | null {
 export interface ConsoleOperatorConfig {
   /** Sign-in email of the operator account provisioned by `db:ensure-admin`. */
   email: string;
-  /** Password used when provisioning (hashed before it reaches the database). */
-  password: string;
+  /**
+   * Password used when provisioning (hashed before it reaches the database).
+   *
+   * Never defaulted in source: a credential that ships in the repository is
+   * readable by everyone with access to it, so provisioning refuses to run
+   * until `ADMIN_DEFAULT_PASSWORD` is supplied.
+   */
+  password: string | null;
   /** Display name from ADMIN_DEFAULT_NAME. */
   fullName: string;
   firstName: string;
@@ -50,7 +54,7 @@ export function consoleOperator(): ConsoleOperatorConfig {
 
   return {
     email,
-    password: read('ADMIN_DEFAULT_PASSWORD') ?? FALLBACK_PASSWORD,
+    password: read('ADMIN_DEFAULT_PASSWORD'),
     fullName,
     ...splitFullName(fullName),
     masterKey: read('ADMIN_MASTER_KEY'),
