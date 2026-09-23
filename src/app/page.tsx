@@ -579,6 +579,106 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="chase-navy">
+        <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className="text-sm font-semibold text-white">Crestline Capital</p>
+              <p className="mt-3 max-w-xs text-sm leading-relaxed text-white/70">
+                Personal and business banking on a ledger you can audit, with human
+                underwriters and round-the-clock fraud monitoring.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/60">
+                Products
+              </p>
+              <ul className="mt-4 space-y-2.5 text-sm text-white/80">
+                <li>
+                  <Link className="transition-colors hover:text-white" href="/services">
+                    All products
+                  </Link>
+                </li>
+                <li>
+                  <Link className="transition-colors hover:text-white" href="/savings">
+                    Savings goals
+                  </Link>
+                </li>
+                <li>
+                  <Link className="transition-colors hover:text-white" href="/loans">
+                    Loans
+                  </Link>
+                </li>
+                <li>
+                  <Link className="transition-colors hover:text-white" href="/investments">
+                    Investing
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/60">
+                Your account
+              </p>
+              <ul className="mt-4 space-y-2.5 text-sm text-white/80">
+                <li>
+                  <Link className="transition-colors hover:text-white" href="/login">
+                    Sign in
+                  </Link>
+                </li>
+                <li>
+                  <Link className="transition-colors hover:text-white" href="/register">
+                    Open an account
+                  </Link>
+                </li>
+                <li>
+                  <Link className="transition-colors hover:text-white" href="/support">
+                    Support
+                  </Link>
+                </li>
+                <li>
+                  <Link className="transition-colors hover:text-white" href="/about">
+                    About us
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/60">
+                Operations
+              </p>
+              <ul className="mt-4 space-y-2.5 text-sm text-white/80">
+                <li>
+                  <Link
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                    href="/admin/login"
+                  >
+                    <Fingerprint className="h-3.5 w-3.5" />
+                    Operations console
+                  </Link>
+                </li>
+              </ul>
+              <p className="mt-3 max-w-xs text-xs leading-relaxed text-white/55">
+                Privileged staff access only. Console sessions are separate from
+                customer banking sessions and every action is audit-logged.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-12 flex flex-col gap-3 border-t border-white/15 pt-6 text-xs text-white/60 sm:flex-row sm:items-center sm:justify-between">
+            <p>© 2026 Crestline Capital. Member FDIC. Equal Housing Lender.</p>
+            <p className="flex items-center gap-2">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              256-bit encryption · SOC 2 Type II · ISO 27001
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

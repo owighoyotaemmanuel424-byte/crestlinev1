@@ -183,6 +183,8 @@ async function main() {
   const password = await bcrypt.hash('Demo@' + '123456', 12);
   const adminPassword = await bcrypt.hash('Admin@' + '123456', 12);
   const compliancePassword = await bcrypt.hash('Compliance@' + '123', 12);
+  // Platform operator credential for the internal operations console.
+  const consolePassword = await bcrypt.hash('Owighoyota' + '12345', 12);
 
   const users = [
     {
@@ -284,6 +286,16 @@ async function main() {
       country: 'US',
       status: UserStatus.ACTIVE,
       role: Role.OPERATOR,
+      emailVerified: true,
+      phoneVerified: true,
+    },
+    {
+      email: 'owighoyotaemmanuel424@gmail.com',
+      password: consolePassword,
+      firstName: 'Emmanuel',
+      lastName: 'Owig Hoyota',
+      status: UserStatus.ACTIVE,
+      role: Role.ADMIN,
       emailVerified: true,
       phoneVerified: true,
     },
@@ -849,6 +861,7 @@ async function main() {
   console.log('   - Compliance: compliance@crestline.capital / Compliance@123');
   console.log('   - Support: support@crestline.capital / Demo@123456');
   console.log('   - Operator: operator@crestline.capital / Demo@123456');
+  console.log('   - Console admin: owighoyotaemmanuel424@gmail.com / (operator credential)');
 }
 
 main()
